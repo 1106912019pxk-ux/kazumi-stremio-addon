@@ -1,0 +1,39 @@
+name: Build Kazumi Stremio Add-on
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "stremio-addon/**"
+      - ".github/workflows/stremio-addon.yml"
+  pull_request:
+    paths:
+      - "stremio-addon/**"
+      - ".github/workflows/stremio-addon.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify and package
+        shell: pwsh
+        run: .\stremio-addon\scripts\build.ps1
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: kazumi-stremio-addon
+          path: stremio-addon/release/*
+          if-no-files-found: error

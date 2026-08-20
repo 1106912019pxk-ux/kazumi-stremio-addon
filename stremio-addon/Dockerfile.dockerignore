@@ -1,0 +1,8 @@
+**/dist
+**/release
+**/node_modules
+**/test
+**/*.log
+.git
+.dart_tool
+build

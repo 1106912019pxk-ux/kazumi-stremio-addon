@@ -1,0 +1,10 @@
+services:
+  kazumi-stremio-addon:
+    build:
+      context: ..
+      dockerfile: stremio-addon/Dockerfile
+    ports:
+      - "7000:7000"
+    environment:
+      PORT: "7000"
+    restart: unless-stopped

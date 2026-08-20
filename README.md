@@ -1,3 +1,9 @@
+> [!NOTE]
+> 此本地 fork 正在 `stremio-addon/` 中验证 Kazumi 规则兼容层能否作为
+> Stremio 标准插件运行于 KDTIVI、Nuvio 和 Stremio。当前首个版本只使用
+> Apple 官方公网 HLS 样例，不接入第三方内容源。构建说明见
+> [stremio-addon/README.md](stremio-addon/README.md)。
+
 <div align=center>
 
 <h1>Kazumi</h1>

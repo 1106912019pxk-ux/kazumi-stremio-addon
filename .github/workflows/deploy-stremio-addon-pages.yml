@@ -1,0 +1,62 @@
+name: Deploy Kazumi Stremio Add-on to Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "stremio-addon/src/**"
+      - "stremio-addon/scripts/build-static.mjs"
+      - "stremio-addon/package.json"
+      - ".github/workflows/deploy-stremio-addon-pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: kazumi-stremio-addon-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify add-on
+        working-directory: stremio-addon
+        run: |
+          node --check src/model.mjs
+          node --check src/addon.mjs
+          node --check src/server.mjs
+          node --check scripts/build-static.mjs
+          node --test
+          node scripts/build-static.mjs
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: stremio-addon/dist/static
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
