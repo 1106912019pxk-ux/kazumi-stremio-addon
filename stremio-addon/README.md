@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.2.0` 在 Apple 官方公网 HLS 回归测试之外，加入了第一阶段 Kazumi JSON/XPath 规则桥接器。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测和可供 KDTIVI 真机验收的动态授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
 
 ## 当前验证范围
 
@@ -12,6 +12,7 @@
 - Kazumi 旧式 XPath JSON 规则读取、校验和同源安全边界；
 - GET/POST 搜索、详情选集、多线路和 Stremio 搜索目录转换；
 - HLS/MP4 等直链与 User-Agent/Referer 播放请求头输出；
+- `<video>`、`<source>` 和常见内联播放器配置中的 HLS/MP4 媒体探测；
 - WebView/JS Hook 播放页的显式降级，不把未解析页面伪装成视频直链。
 
 ## 本地运行
@@ -39,6 +40,15 @@ node src/server.mjs
 
 规则目录在启动时读取。修改规则后需要重启服务。当前兼容字段为 `baseURL`、`searchURL`、`searchList`、`searchName`、`searchResult`、`chapterRoads`、`chapterResult`、`usePost`、`userAgent` 和 `referer`；XPath 采用 Kazumi 常见的元素、层级、序号、属性条件和 `text()` 子集。
 
+不依赖第三方内容的动态验收模式：
+
+```powershell
+$env:KAZUMI_DEMO_MODE = "true"
+node src/server.mjs
+```
+
+安装该 Node 服务的 manifest 后，在 KDTIVI 全局搜索输入 `Kazumi`。预期能看到“Kazumi 动态规则播放演示”，其详情包含 2 集、每集 2 条线路；线路由规则先访问本地播放页，再探测并返回 Apple 官方 HLS 测试流。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换和播放页媒体探测。
+
 iPhone 不能访问电脑的 `127.0.0.1`。局域网测试应使用电脑的局域网地址，例如 `http://192.168.1.20:7000/manifest.json`，并允许 Windows 防火墙的对应入站访问。公网使用应部署静态包到 HTTPS 站点，或为 Node 服务配置 HTTPS 反向代理。
 
 ## 检查与打包
@@ -49,8 +59,8 @@ iPhone 不能访问电脑的 `127.0.0.1`。局域网测试应使用电脑的局�
 
 脚本依次执行语法检查、自动测试、静态插件生成和 ZIP 打包，产物位于 `release/`：
 
-- `kazumi-stremio-addon-server-v0.1.0.zip`：Node 服务；
-- `kazumi-stremio-addon-static-v0.1.0.zip`：可部署到静态 HTTPS 站点；
+- `kazumi-stremio-addon-server-v<版本>.zip`：Node 服务；
+- `kazumi-stremio-addon-static-v<版本>.zip`：可部署到静态 HTTPS 站点；
 - `SHA256SUMS.txt`：产物校验值。
 
 若 Node.js 不在 PATH，可指定可执行文件：
@@ -94,7 +104,7 @@ pnpm run build:static
 
 ## 下一阶段边界
 
-下一阶段将增加播放页媒体探测、规则健康检查、缓存、搜索结果与 Bangumi 元数据映射。需要 WebView、验证码、JS Hook 或 HLS 广告过滤的规则目前只返回外部播放页，尚未达到 Kazumi 客户端的原生解析能力。
+后续将增加规则健康检查、缓存、搜索结果与 Bangumi 元数据映射。当前媒体探测不会执行第三方 JavaScript；需要 WebView、验证码、JS Hook 或 HLS 广告过滤的规则仍只返回外部播放页，尚未达到 Kazumi 客户端的完整原生解析能力。
 
 插件只用于用户拥有或获授权访问的来源。规则文件是可执行网络配置，只应从可信位置加载；服务不会从客户端请求任意规则地址。
 

@@ -1,4 +1,4 @@
-export const ADDON_VERSION = '0.2.0';
+export const ADDON_VERSION = '0.3.0-dev';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',
@@ -9,6 +9,9 @@ export const IDS = Object.freeze({
 
 export const APPLE_HLS_URL =
   'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_adv_example_hevc/master.m3u8';
+
+export const APPLE_COMPAT_HLS_URL =
+  'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8';
 
 export function createManifest(origin, { enableRuleBridge = false } = {}) {
   const manifest = {

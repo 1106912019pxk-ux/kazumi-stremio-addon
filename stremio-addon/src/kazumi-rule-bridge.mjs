@@ -322,6 +322,22 @@ export class KazumiRuleEngine {
     return roads;
   }
 
+  async resolveEpisode(ruleId, source) {
+    const rule = this.#getRule(ruleId);
+    const sourceUrl = resolveHttpUrl(rule.baseUrl, source, '播放页链接');
+    if (directMediaUrl(sourceUrl)) return [sourceUrl];
+
+    // Arbitrary cross-origin playback pages would turn the bridge into an
+    // SSRF proxy. Kazumi rules may still return cross-origin direct media,
+    // but HTML probing remains inside the rule's declared base origin.
+    assertSameOrigin(rule, sourceUrl);
+    const html = await this.#fetchText(sourceUrl, {
+      method: 'GET',
+      headers: requestHeaders(rule),
+    });
+    return mediaUrlsFromHtml(html, sourceUrl);
+  }
+
   #getRule(ruleId) {
     const rule = this.rules.get(ruleId);
     if (!rule) {
@@ -368,6 +384,41 @@ function directMediaUrl(value) {
   } catch {
     return false;
   }
+}
+
+function mediaUrlsFromHtml(html, pageUrl) {
+  const values = [];
+  const add = (value) => {
+    if (typeof value !== 'string' || value.trim() === '') return;
+    let resolved;
+    try {
+      resolved = resolveHttpUrl(pageUrl, value.trim(), '媒体链接');
+    } catch {
+      return;
+    }
+    if (directMediaUrl(resolved) && !values.includes(resolved)) values.push(resolved);
+  };
+
+  const { document } = parseHTML(html);
+  for (const node of document.querySelectorAll('video[src], source[src]')) {
+    add(node.getAttribute('src'));
+  }
+
+  // Many simple playback pages expose the final media URL in an inline
+  // player configuration. This is intentionally passive extraction: no
+  // third-party JavaScript is executed on the bridge server.
+  const normalizedHtml = html.replaceAll('\\/', '/');
+  for (const match of normalizedHtml.matchAll(
+    /(?:https?:\/\/|\/)[^\s"'<>]+?\.(?:m3u8|mp4|m4v|webm)(?:\?[^\s"'<>]*)?/gi,
+  )) {
+    add(match[0]);
+  }
+  for (const match of normalizedHtml.matchAll(
+    /["']([^"']+?\.(?:m3u8|mp4|m4v|webm)(?:\?[^"']*)?)["']/gi,
+  )) {
+    add(match[1]);
+  }
+  return values;
 }
 
 export class KazumiStremioRuleBridge {
@@ -430,7 +481,7 @@ export class KazumiStremioRuleBridge {
     };
   }
 
-  createStreams(id) {
+  async createStreams(id) {
     const payload = decodeId(VIDEO_ID_PREFIX, id);
     const rule = this.engine.rules.get(payload.ruleId);
     if (!rule) {
@@ -438,25 +489,37 @@ export class KazumiStremioRuleBridge {
         code: 'RULE_NOT_FOUND',
       });
     }
-    return {
-      streams: payload.entries.map((entry) => {
+    const groups = await Promise.all(
+      payload.entries.map(async (entry) => {
+        let mediaUrls = [];
+        try {
+          mediaUrls = await this.engine.resolveEpisode(payload.ruleId, entry.url);
+        } catch {
+          // Preserve Kazumi's ability to hand unsupported WebView/JS pages to
+          // a capable host instead of failing the whole episode.
+        }
         const common = {
           name: entry.road,
           title: entry.name,
-          description: directMediaUrl(entry.url)
-            ? 'Kazumi 规则直链'
-            : '需要后续 WebView/JS Hook 解析',
+          description: directMediaUrl(entry.url) ? 'Kazumi 规则直链' : 'Kazumi 播放页媒体探测',
         };
-        if (!directMediaUrl(entry.url)) {
-          return { ...common, externalUrl: entry.url };
+        if (mediaUrls.length === 0) {
+          return [
+            {
+              ...common,
+              description: '需要 WebView/JS Hook 进一步解析',
+              externalUrl: entry.url,
+            },
+          ];
         }
         const proxyRequestHeaders = {
           ...(rule.userAgent ? { 'User-Agent': rule.userAgent } : {}),
           ...(rule.referer ? { Referer: rule.referer } : {}),
         };
-        return {
+        return mediaUrls.map((mediaUrl, mediaIndex) => ({
           ...common,
-          url: entry.url,
+          ...(mediaUrls.length > 1 ? { title: `${entry.name} · 媒体 ${mediaIndex + 1}` } : {}),
+          url: mediaUrl,
           behaviorHints: {
             bingeGroup: `kazumi-rule-${rule.id}-${entry.road}`,
             notWebReady: true,
@@ -464,8 +527,9 @@ export class KazumiStremioRuleBridge {
               ? { proxyHeaders: { request: proxyRequestHeaders } }
               : {}),
           },
-        };
+        }));
       }),
-    };
+    );
+    return { streams: groups.flat() };
   }
 }

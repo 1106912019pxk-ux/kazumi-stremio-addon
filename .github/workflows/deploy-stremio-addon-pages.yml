@@ -41,6 +41,7 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
           node --check src/model.mjs
+          node --check src/demo-source.mjs
           node --check src/kazumi-rule-bridge.mjs
           node --check src/addon.mjs
           node --check src/server.mjs

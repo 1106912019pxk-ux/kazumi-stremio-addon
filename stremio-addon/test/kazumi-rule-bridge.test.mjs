@@ -11,7 +11,8 @@ import {
   loadKazumiRules,
   normalizeKazumiRule,
 } from '../src/kazumi-rule-bridge.mjs';
-import { APPLE_HLS_URL, IDS } from '../src/model.mjs';
+import { createDemoRuleDocument, DEMO_RULE_ID } from '../src/demo-source.mjs';
+import { APPLE_COMPAT_HLS_URL, APPLE_HLS_URL, IDS } from '../src/model.mjs';
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -41,6 +42,13 @@ test('bridges a Kazumi XPath rule from search to direct HLS streams', async (con
       response.end(`<!doctype html><html><body>
         <div class="road"><a href="${APPLE_HLS_URL}">第 1 集</a></div>
         <div class="road"><a href="/watch/apple-1">第 1 集</a></div>
+        <div class="road"><a href="/watch/needs-webview">第 1 集</a></div>
+      </body></html>`);
+      return;
+    }
+    if (url.pathname === '/watch/apple-1') {
+      response.end(`<!doctype html><html><body>
+        <script>window.player = { url: "${APPLE_COMPAT_HLS_URL}" };</script>
       </body></html>`);
       return;
     }
@@ -99,9 +107,53 @@ test('bridges a Kazumi XPath rule from search to direct HLS streams', async (con
   const streams = await fetch(
     `${addonUrl}/stream/series/${meta.meta.videos[0].id}.json`,
   ).then((response) => response.json());
-  assert.equal(streams.streams.length, 2);
+  assert.equal(streams.streams.length, 3);
   assert.equal(streams.streams[0].url, APPLE_HLS_URL);
-  assert.equal(streams.streams[1].externalUrl, `${upstreamUrl}/watch/apple-1`);
+  assert.equal(streams.streams[1].url, APPLE_COMPAT_HLS_URL);
+  assert.equal(streams.streams[1].description, 'Kazumi 播放页媒体探测');
+  assert.equal(streams.streams[2].externalUrl, `${upstreamUrl}/watch/needs-webview`);
+  assert.equal(streams.streams[2].description, '需要 WebView/JS Hook 进一步解析');
+});
+
+test('serves the authorized demo through dynamic search, episodes and lines', async (context) => {
+  let requestHandler = (_request, response) => {
+    response.statusCode = 503;
+    response.end('starting');
+  };
+  const addon = createServer((request, response) => requestHandler(request, response));
+  const addonUrl = await listen(addon);
+  context.after(() => close(addon));
+
+  const demoRule = normalizeKazumiRule(createDemoRuleDocument(addonUrl), {
+    id: DEMO_RULE_ID,
+  });
+  const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine([demoRule]));
+  requestHandler = createRequestHandler({ ruleBridge });
+
+  const catalog = await fetch(
+    `${addonUrl}/catalog/series/${IDS.ruleCatalog}/search=Kazumi.json`,
+  ).then((response) => response.json());
+  assert.equal(catalog.metas.length, 1);
+  assert.equal(catalog.metas[0].name, 'Kazumi 动态规则播放演示');
+
+  const meta = await fetch(`${addonUrl}/meta/series/${catalog.metas[0].id}.json`).then(
+    (response) => response.json(),
+  );
+  assert.equal(meta.meta.videos.length, 2);
+  assert.equal(meta.meta.videos[0].title, '第 1 集 · HEVC 多码率');
+
+  const firstEpisode = await fetch(
+    `${addonUrl}/stream/series/${meta.meta.videos[0].id}.json`,
+  ).then((response) => response.json());
+  assert.equal(firstEpisode.streams.length, 2);
+  assert.deepEqual(
+    firstEpisode.streams.map((stream) => stream.url),
+    [APPLE_HLS_URL, APPLE_COMPAT_HLS_URL],
+  );
+  assert.deepEqual(
+    firstEpisode.streams.map((stream) => stream.name),
+    ['播放线路1', '播放线路2'],
+  );
 });
 
 test('supports legacy POST search rules', async (context) => {

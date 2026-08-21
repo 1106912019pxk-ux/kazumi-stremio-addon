@@ -21,6 +21,7 @@ $version = $package.version
 Push-Location $addonRoot
 try {
     & $NodePath --check "src/model.mjs"
+    & $NodePath --check "src/demo-source.mjs"
     & $NodePath --check "src/kazumi-rule-bridge.mjs"
     & $NodePath --check "src/addon.mjs"
     & $NodePath --check "src/server.mjs"

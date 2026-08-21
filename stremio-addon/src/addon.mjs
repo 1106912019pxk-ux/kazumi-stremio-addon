@@ -6,6 +6,11 @@ import {
   createStreams,
 } from './model.mjs';
 import { KazumiRuleError } from './kazumi-rule-bridge.mjs';
+import {
+  createDemoPlaybackHtml,
+  createDemoSearchHtml,
+  createDemoTitleHtml,
+} from './demo-source.mjs';
 
 export const ICON_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
@@ -109,6 +114,30 @@ async function handleRequestCore(request, response, ruleBridge) {
     return;
   }
 
+  if (pathname === '/demo/search') {
+    sendText(
+      response,
+      200,
+      createDemoSearchHtml(url.searchParams.get('wd') ?? ''),
+      'text/html; charset=utf-8',
+    );
+    return;
+  }
+
+  if (pathname === '/demo/title/kazumi-dynamic') {
+    sendText(response, 200, createDemoTitleHtml(), 'text/html; charset=utf-8');
+    return;
+  }
+
+  const demoPlaybackMatch = pathname.match(/^\/demo\/play\/([a-z0-9-]+)$/);
+  if (demoPlaybackMatch) {
+    const html = createDemoPlaybackHtml(demoPlaybackMatch[1]);
+    if (html) {
+      sendText(response, 200, html, 'text/html; charset=utf-8');
+      return;
+    }
+  }
+
   if (pathname === `/catalog/series/${IDS.catalog}.json`) {
     sendJson(response, 200, createCatalog(origin));
     return;
@@ -143,7 +172,7 @@ async function handleRequestCore(request, response, ruleBridge) {
       /^\/stream\/series\/(kazumi-rule-video-[A-Za-z0-9_-]+)\.json$/,
     );
     if (ruleStreamMatch) {
-      sendJson(response, 200, ruleBridge.createStreams(ruleStreamMatch[1]));
+      sendJson(response, 200, await ruleBridge.createStreams(ruleStreamMatch[1]));
       return;
     }
   }
