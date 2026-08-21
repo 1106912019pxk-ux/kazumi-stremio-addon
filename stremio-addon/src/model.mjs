@@ -1,11 +1,10 @@
-export const ADDON_VERSION = '0.3.0-dev.2';
+export const ADDON_VERSION = '0.3.0-dev.3';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',
   series: 'kazumi-test-apple-hls',
   episode: 'kazumi-test-apple-hls-1',
   ruleCatalog: 'kazumi-rule-search',
-  ruleLibrary: 'kazumi-rule-library',
 });
 
 export const APPLE_HLS_URL =
@@ -35,19 +34,10 @@ export function createManifest(
       {
         type: 'series',
         id: IDS.catalog,
-        name: 'Kazumi 网络源验证',
+        name: enableRuleLibrary ? 'Kazumi 动态规则验收' : 'Kazumi 网络源验证',
       },
       ...(enableRuleBridge
         ? [
-            ...(enableRuleLibrary
-              ? [
-                  {
-                    type: 'series',
-                    id: IDS.ruleLibrary,
-                    name: 'Kazumi 动态规则验收',
-                  },
-                ]
-              : []),
             {
               type: 'series',
               id: IDS.ruleCatalog,

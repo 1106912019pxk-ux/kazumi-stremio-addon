@@ -453,6 +453,7 @@ export class KazumiStremioRuleBridge {
         name: item.name,
         poster: `${origin}/assets/poster.svg`,
         posterShape: 'poster',
+        releaseInfo: 'Dynamic Test',
         genres: [item.ruleName],
         description: `Kazumi 规则：${item.ruleName}`,
       })),

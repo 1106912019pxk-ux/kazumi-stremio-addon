@@ -133,13 +133,11 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
   requestHandler = createRequestHandler({ ruleBridge });
 
   const manifest = await fetch(`${addonUrl}/manifest.json`).then((response) => response.json());
-  assert.equal(
-    manifest.catalogs.find((catalogItem) => catalogItem.id === IDS.ruleLibrary)?.name,
-    'Kazumi 动态规则验收',
-  );
+  assert.equal(manifest.catalogs[0].id, IDS.catalog);
+  assert.equal(manifest.catalogs[0].name, 'Kazumi 动态规则验收');
 
   const featuredCatalog = await fetch(
-    `${addonUrl}/catalog/series/${IDS.ruleLibrary}.json`,
+    `${addonUrl}/catalog/series/${IDS.catalog}.json`,
   ).then((response) => response.json());
   assert.equal(featuredCatalog.metas[0].name, 'Kazumi 动态规则播放演示');
 

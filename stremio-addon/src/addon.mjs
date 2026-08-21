@@ -147,7 +147,13 @@ async function handleRequestCore(request, response, ruleBridge, onRequest) {
   }
 
   if (pathname === `/catalog/series/${IDS.catalog}.json`) {
-    sendJson(response, 200, createCatalog(origin));
+    sendJson(
+      response,
+      200,
+      ruleBridge?.featuredEnabled
+        ? await ruleBridge.createFeaturedCatalog(origin)
+        : createCatalog(origin),
+    );
     return;
   }
 
@@ -162,11 +168,6 @@ async function handleRequestCore(request, response, ruleBridge, onRequest) {
   }
 
   if (ruleBridge?.enabled) {
-    if (pathname === `/catalog/series/${IDS.ruleLibrary}.json`) {
-      sendJson(response, 200, await ruleBridge.createFeaturedCatalog(origin));
-      return;
-    }
-
     const searchPrefix = `/catalog/series/${IDS.ruleCatalog}/`;
     if (pathname.startsWith(searchPrefix) && pathname.endsWith('.json')) {
       const extra = pathname.slice(searchPrefix.length, -'.json'.length);
