@@ -1,4 +1,4 @@
-export const ADDON_VERSION = '0.3.0-dev.6';
+export const ADDON_VERSION = '0.4.0-dev.2';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',
@@ -17,7 +17,7 @@ export const MDN_MP4_URL = 'https://mdn.github.io/shared-assets/videos/flower.mp
 
 export function createManifest(
   origin,
-  { enableRuleBridge = false, enableRuleLibrary = false } = {},
+  { enableRuleBridge = false, enableRuleLibrary = false, primaryCatalogName = '' } = {},
 ) {
   const manifest = {
     id: 'org.kazumi.bridge.test',
@@ -36,7 +36,9 @@ export function createManifest(
       {
         type: 'series',
         id: IDS.catalog,
-        name: enableRuleLibrary ? 'Kazumi 动态规则验收' : 'Kazumi 网络源验证',
+        name:
+          primaryCatalogName ||
+          (enableRuleLibrary ? 'Kazumi 动态规则验收' : 'Kazumi 网络源验证'),
       },
       ...(enableRuleBridge
         ? [

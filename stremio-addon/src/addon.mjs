@@ -5,7 +5,8 @@ import {
   createMeta,
   createStreams,
 } from './model.mjs';
-import { KazumiRuleError } from './kazumi-rule-bridge.mjs';
+import { KazumiRuleError } from './rule-error.mjs';
+import { isBangumiMetaId } from './bangumi-bridge.mjs';
 import {
   createDemoPlaybackHtml,
   createDemoSearchHtml,
@@ -62,7 +63,7 @@ function getOrigin(request) {
   return `${protocol}://${host}`;
 }
 
-async function handleRequestCore(request, response, ruleBridge, onRequest) {
+async function handleRequestCore(request, response, ruleBridge, bangumiBridge, onRequest) {
   if (request.method === 'OPTIONS') {
     response.writeHead(204, commonHeaders('text/plain; charset=utf-8'));
     response.end();
@@ -107,6 +108,9 @@ async function handleRequestCore(request, response, ruleBridge, onRequest) {
         rules: ruleBridge?.engine.size ?? 0,
         streamPolicy: ruleBridge?.streamPolicy ?? 'static',
       },
+      bangumi: {
+        enabled: bangumiBridge?.enabled ?? false,
+      },
     });
     return;
   }
@@ -118,6 +122,7 @@ async function handleRequestCore(request, response, ruleBridge, onRequest) {
       createManifest(origin, {
         enableRuleBridge: ruleBridge?.enabled ?? false,
         enableRuleLibrary: ruleBridge?.featuredEnabled ?? false,
+        primaryCatalogName: bangumiBridge?.enabled ? 'Kazumi 本周放送' : '',
       }),
     );
     return;
@@ -151,15 +156,23 @@ async function handleRequestCore(request, response, ruleBridge, onRequest) {
     sendJson(
       response,
       200,
-      ruleBridge?.featuredEnabled
-        ? await ruleBridge.createFeaturedCatalog(origin)
-        : createCatalog(origin),
+      bangumiBridge?.enabled
+        ? await bangumiBridge.createCatalog(origin)
+        : ruleBridge?.featuredEnabled
+          ? await ruleBridge.createFeaturedCatalog(origin)
+          : createCatalog(origin),
     );
     return;
   }
 
   if (pathname === `/meta/series/${IDS.series}.json`) {
     sendJson(response, 200, createMeta(origin));
+    return;
+  }
+
+  const bangumiMetaMatch = pathname.match(/^\/meta\/series\/(kazumi-bangumi-\d+)\.json$/);
+  if (bangumiMetaMatch && bangumiBridge?.enabled && isBangumiMetaId(bangumiMetaMatch[1])) {
+    sendJson(response, 200, await bangumiBridge.createMeta(origin, bangumiMetaMatch[1]));
     return;
   }
 
@@ -217,9 +230,9 @@ function errorStatus(error) {
   return 400;
 }
 
-export function createRequestHandler({ ruleBridge, onRequest } = {}) {
+export function createRequestHandler({ ruleBridge, bangumiBridge, onRequest } = {}) {
   return (request, response) => {
-    handleRequestCore(request, response, ruleBridge, onRequest).catch((error) => {
+    handleRequestCore(request, response, ruleBridge, bangumiBridge, onRequest).catch((error) => {
       if (response.headersSent) {
         response.destroy(error);
         return;

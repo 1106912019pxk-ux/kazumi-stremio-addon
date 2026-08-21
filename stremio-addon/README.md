@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.6` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录、宿主可选的媒体输出策略和可供真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.4.0-dev.2` 已同时兼容 Kazumi 旧式 XPath 规则和 API level 8 的 JSON API 规则，并将 Bangumi 周播目录、动画元数据、搜索、选集、多来源线路和播放页构造统一转换成 Stremio 资源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
 
 ## 当前验证范围
 
@@ -10,6 +10,10 @@
 - CORS、健康检查、静态托管包和 Node 服务包；
 - Windows 本地打包和 GitHub Actions 自动产物。
 - Kazumi 旧式 XPath JSON 规则读取、校验和同源安全边界；
+- Kazumi API level 8 的 `searchMode/chapterMode=api`、受限 JSONPath 和请求模板；
+- API 搜索内部 ID、嵌套 JSON 选集、分隔字符串选集和播放页模板；
+- Bangumi 公共周播目录、封面、简介、年份、标签与基础内存缓存；
+- 同一 Bangumi 动画下的多条 Kazumi 规则、多线路和统一剧集聚合；
 - GET/POST 搜索、详情选集、多线路和 Stremio 搜索目录转换；
 - HLS/MP4 等直链与 User-Agent/Referer 播放请求头输出；
 - `<video>`、`<source>` 和常见内联播放器配置中的 HLS/MP4 媒体探测；
@@ -39,7 +43,23 @@ $env:KAZUMI_RULES_DIR = "C:\path\to\authorized-rules"
 node src/server.mjs
 ```
 
-规则目录在启动时读取。修改规则后需要重启服务。当前兼容字段为 `baseURL`、`searchURL`、`searchList`、`searchName`、`searchResult`、`chapterRoads`、`chapterResult`、`usePost`、`userAgent` 和 `referer`；XPath 采用 Kazumi 常见的元素、层级、序号、属性条件和 `text()` 子集。
+规则目录在启动时读取，修改规则后需要重启服务。XPath 模式兼容 `baseURL`、`searchURL`、`searchList`、`searchName`、`searchResult`、`chapterRoads`、`chapterResult`、`usePost`、`userAgent` 和 `referer`；XPath 采用 Kazumi 常见的元素、层级、序号、属性条件和 `text()` 子集。
+
+API 模式兼容 Kazumi API level 8 的 `searchMode`、`chapterMode`、`searchApiConfig` 和 `chapterApiConfig`。支持 GET/POST、JSON/表单请求体、请求头、查询参数、`@keyword`、`@source`、响应变量、线路/剧集序号和播放页模板。JSONPath 与 Kazumi 一样只接受字段、数组下标、通配符和带引号字段名，不执行过滤器、递归查找或表达式。
+
+## Bangumi 原生目录
+
+加载至少一条规则后，可以启用更接近 Kazumi 的原生浏览方式：
+
+```powershell
+$env:KAZUMI_RULES_DIR = ".\rules"
+$env:KAZUMI_BANGUMI_MODE = "true"
+node src/server.mjs
+```
+
+此模式把 KDTIVI 首个目录显示为“Kazumi 本周放送”，目录和详情使用 Bangumi 公共 API 的真实封面、标题、简介、年份和标签，不需要 Bangumi Access Token。打开动画详情时，服务依次使用中文名和原名检索已加载的 Kazumi 规则；若存在精确标题结果，会优先聚合精确结果，再把来源名与线路名一起显示给宿主。
+
+目录、单条元数据和聚合结果使用短时内存缓存，避免宿主刷新页面时反复请求 Bangumi 和来源站。服务重启后缓存自然清空，不会在磁盘保存 Bangumi 或来源响应。
 
 不依赖第三方内容的动态验收模式：
 
@@ -116,7 +136,7 @@ pnpm run build:static
 
 ## 下一阶段边界
 
-后续将增加规则健康检查、缓存、搜索结果与 Bangumi 元数据映射。当前媒体探测不会执行第三方 JavaScript；需要 WebView、验证码、JS Hook 或 HLS 广告过滤的规则仍只返回外部播放页，尚未达到 Kazumi 客户端的完整原生解析能力。
+下一阶段将增加规则健康检查、失败来源降权、搜索别名回退和可控的持久缓存。当前媒体探测不会执行第三方 JavaScript；需要 WebView、验证码、JS Hook、Cookie 验证或 HLS 广告过滤的规则仍只返回外部播放页，尚未达到 Kazumi 客户端的完整原生解析能力。
 
 插件只用于用户拥有或获授权访问的来源。规则文件是可执行网络配置，只应从可信位置加载；服务不会从客户端请求任意规则地址。
 

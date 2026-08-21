@@ -51,6 +51,7 @@ test('supports health checks and CORS preflight', async () => {
   assert.deepEqual(health, {
     status: 'ok',
     ruleBridge: { enabled: false, rules: 0, streamPolicy: 'static' },
+    bangumi: { enabled: false },
   });
 
   const preflight = await fetch(`${baseUrl}/manifest.json`, { method: 'OPTIONS' });

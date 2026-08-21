@@ -8,6 +8,7 @@ services:
     environment:
       PORT: "7000"
       KAZUMI_RULES_DIR: "/rules"
+      KAZUMI_BANGUMI_MODE: "${KAZUMI_BANGUMI_MODE:-false}"
     volumes:
       - ./rules:/rules:ro
     restart: unless-stopped

@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { resolve } from 'node:path';
 import { createRequestHandler } from './addon.mjs';
+import { BangumiMetadataClient, KazumiBangumiBridge } from './bangumi-bridge.mjs';
 import {
   KazumiRuleEngine,
   KazumiStremioRuleBridge,
@@ -38,9 +39,19 @@ const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine(rules), {
   featuredKeyword,
   streamPolicy,
 });
+const bangumiEnabled = ['1', 'true', 'yes'].includes(
+  (process.env.KAZUMI_BANGUMI_MODE ?? '').toLowerCase(),
+);
+const bangumiBridge = bangumiEnabled
+  ? new KazumiBangumiBridge(
+      ruleBridge,
+      new BangumiMetadataClient({ accessToken: process.env.BANGUMI_ACCESS_TOKEN ?? '' }),
+    )
+  : undefined;
 const server = createServer(
   createRequestHandler({
     ruleBridge,
+    bangumiBridge,
     onRequest: ({ method, pathname, userAgent }) => {
       const client =
         String(userAgent).replace(/\s+/g, ' ').trim().slice(0, 120) || 'unknown-client';
@@ -57,6 +68,9 @@ server.listen(port, host, () => {
   if (demoEnabled) console.log('Authorized dynamic demo: enabled (search keyword: Kazumi)');
   if (ruleBridge.featuredEnabled) {
     console.log(`Featured rule catalog: enabled (keyword: ${featuredKeyword})`);
+  }
+  if (bangumiEnabled) {
+    console.log(`Bangumi native catalog: ${bangumiBridge.enabled ? 'enabled' : 'waiting for rules'}`);
   }
 });
 

@@ -2,6 +2,18 @@ import { readFile, readdir } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import fontoxpath from 'fontoxpath';
 import { parseHTML } from 'linkedom';
+import {
+  RULE_MODES,
+  normalizeApiChapterConfig,
+  normalizeApiSearchConfig,
+  normalizeRuleMode,
+  parseApiChapters,
+  parseApiSearch,
+  prepareApiRequest,
+  validateApiChapterConfig,
+  validateApiSearchConfig,
+} from './kazumi-api-rule.mjs';
+import { KazumiRuleError } from './rule-error.mjs';
 
 const { evaluateXPathToNodes } = fontoxpath;
 
@@ -16,13 +28,7 @@ export const STREAM_POLICIES = Object.freeze({
   HLS_ONLY: 'hls-only',
 });
 
-export class KazumiRuleError extends Error {
-  constructor(message, { code = 'RULE_ERROR', cause } = {}) {
-    super(message, { cause });
-    this.name = 'KazumiRuleError';
-    this.code = code;
-  }
-}
+export { KazumiRuleError } from './rule-error.mjs';
 
 function requiredString(value, field, ruleName) {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -69,13 +75,17 @@ export function normalizeKazumiRule(input, { id } = {}) {
   }
 
   const name = requiredString(input.name, 'name', '未命名规则');
+  const searchMode = normalizeRuleMode(input.searchMode);
+  const chapterMode = normalizeRuleMode(input.chapterMode);
+  const searchApiConfig = normalizeApiSearchConfig(input.searchApiConfig);
+  const chapterApiConfig = normalizeApiChapterConfig(input.chapterApiConfig);
   const rule = {
     id: slug(id ?? name),
     api: String(input.api ?? '1'),
     type: typeof input.type === 'string' ? input.type : 'anime',
     name,
     version: String(input.version ?? ''),
-    multiSources: input.muliSources !== false,
+    multiSources: (input.muliSources ?? input.multiSources) !== false,
     useWebview: input.useWebview !== false,
     useNativePlayer: input.useNativePlayer !== false,
     usePost: input.usePost === true,
@@ -86,23 +96,42 @@ export function normalizeKazumiRule(input, { id } = {}) {
         : DEFAULT_USER_AGENT,
     referer: typeof input.referer === 'string' ? input.referer.trim() : '',
     baseUrl: httpUrl(input.baseURL, 'baseURL', name),
-    searchUrl: httpUrl(input.searchURL, 'searchURL', name),
-    searchList: requiredString(input.searchList, 'searchList', name),
-    searchName: requiredString(input.searchName, 'searchName', name),
-    searchResult: requiredString(input.searchResult, 'searchResult', name),
-    chapterRoads: requiredString(input.chapterRoads, 'chapterRoads', name),
-    chapterResult: requiredString(input.chapterResult, 'chapterResult', name),
+    searchMode,
+    chapterMode,
+    searchUrl: typeof input.searchURL === 'string' ? input.searchURL.trim() : '',
+    searchList: typeof input.searchList === 'string' ? input.searchList.trim() : '',
+    searchName: typeof input.searchName === 'string' ? input.searchName.trim() : '',
+    searchResult: typeof input.searchResult === 'string' ? input.searchResult.trim() : '',
+    chapterRoads: typeof input.chapterRoads === 'string' ? input.chapterRoads.trim() : '',
+    chapterResult: typeof input.chapterResult === 'string' ? input.chapterResult.trim() : '',
+    searchApiConfig,
+    chapterApiConfig,
   };
+
+  if (searchMode === RULE_MODES.API) {
+    validateApiSearchConfig(searchApiConfig);
+  } else {
+    rule.searchUrl = httpUrl(input.searchURL, 'searchURL', name);
+    rule.searchList = requiredString(input.searchList, 'searchList', name);
+    rule.searchName = requiredString(input.searchName, 'searchName', name);
+    rule.searchResult = requiredString(input.searchResult, 'searchResult', name);
+  }
+  if (chapterMode === RULE_MODES.API) {
+    validateApiChapterConfig(chapterApiConfig);
+  } else {
+    rule.chapterRoads = requiredString(input.chapterRoads, 'chapterRoads', name);
+    rule.chapterResult = requiredString(input.chapterResult, 'chapterResult', name);
+  }
 
   // Catch selector syntax errors at load time instead of after a client query.
   const { document } = parseHTML('<html><body><div><a>test</a></div></body></html>');
-  for (const selector of [
-    rule.searchList,
-    rule.searchName,
-    rule.searchResult,
-    rule.chapterRoads,
-    rule.chapterResult,
-  ]) {
+  const selectors = [
+    ...(searchMode === RULE_MODES.XPATH
+      ? [rule.searchList, rule.searchName, rule.searchResult]
+      : []),
+    ...(chapterMode === RULE_MODES.XPATH ? [rule.chapterRoads, rule.chapterResult] : []),
+  ];
+  for (const selector of selectors) {
     evaluateNodes(selector, document.documentElement);
   }
 
@@ -255,10 +284,20 @@ export class KazumiRuleEngine {
     const trimmedKeyword = keyword.trim();
     if (!trimmedKeyword) return [];
 
-    const rendered = rule.searchUrl.replaceAll(
-      '@keyword',
-      encodeURIComponent(trimmedKeyword),
-    );
+    if (rule.searchMode === RULE_MODES.API) {
+      const prepared = prepareApiRequest(rule.searchApiConfig.request, {
+        keyword: trimmedKeyword,
+      });
+      const raw = await this.#fetchText(prepared.url, prepared.request);
+      return parseApiSearch(raw, rule.searchApiConfig).map((item) => ({
+        ruleId: rule.id,
+        ruleName: rule.name,
+        name: item.name,
+        source: item.source,
+      }));
+    }
+
+    const rendered = rule.searchUrl.replaceAll('@keyword', encodeURIComponent(trimmedKeyword));
     const url = new URL(rendered);
     const postBody = rule.usePost ? new URLSearchParams(url.searchParams) : undefined;
     const request = rule.usePost
@@ -302,6 +341,14 @@ export class KazumiRuleEngine {
 
   async chapters(ruleId, source) {
     const rule = this.#getRule(ruleId);
+    if (rule.chapterMode === RULE_MODES.API) {
+      const prepared = prepareApiRequest(rule.chapterApiConfig.request, { source });
+      const raw = await this.#fetchText(prepared.url, prepared.request);
+      return parseApiChapters(raw, rule.chapterApiConfig, {
+        source,
+        baseUrl: rule.baseUrl,
+      });
+    }
     const sourceUrl = resolveHttpUrl(rule.baseUrl, source, '详情页链接');
     assertSameOrigin(rule, sourceUrl);
     const html = await this.#fetchText(sourceUrl, {
@@ -444,6 +491,41 @@ function streamRank(stream) {
   return 4;
 }
 
+function normalizedTitle(value) {
+  return String(value)
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+function videosFromRoadGroups(groups) {
+  const count = Math.max(0, ...groups.map((group) => group.road.episodes.length));
+  const videos = [];
+  for (let index = 0; index < count; index++) {
+    const entries = groups.flatMap((group) => {
+      const episode = group.road.episodes[index];
+      return episode
+        ? [
+            {
+              ruleId: group.ruleId,
+              road: group.roadName,
+              ...episode,
+            },
+          ]
+        : [];
+    });
+    if (entries.length === 0) continue;
+    videos.push({
+      id: encodeId(VIDEO_ID_PREFIX, { entries }),
+      title: entries[0].name,
+      released: '2000-01-01T00:00:00.000Z',
+      season: 1,
+      episode: index + 1,
+    });
+  }
+  return videos;
+}
+
 function mediaUrlsFromHtml(html, pageUrl) {
   const values = [];
   const add = (value) => {
@@ -528,22 +610,9 @@ export class KazumiStremioRuleBridge {
   async createMeta(origin, id) {
     const item = decodeId(ITEM_ID_PREFIX, id);
     const roads = await this.engine.chapters(item.ruleId, item.source);
-    const count = Math.max(0, ...roads.map((road) => road.episodes.length));
-    const videos = [];
-    for (let index = 0; index < count; index++) {
-      const entries = roads.flatMap((road) => {
-        const episode = road.episodes[index];
-        return episode ? [{ road: road.name, ...episode }] : [];
-      });
-      if (entries.length === 0) continue;
-      videos.push({
-        id: encodeId(VIDEO_ID_PREFIX, { ruleId: item.ruleId, entries }),
-        title: entries[0].name,
-        released: '2000-01-01T00:00:00.000Z',
-        season: 1,
-        episode: index + 1,
-      });
-    }
+    const videos = videosFromRoadGroups(
+      roads.map((road) => ({ ruleId: item.ruleId, roadName: road.name, road })),
+    );
     return {
       meta: {
         id,
@@ -557,19 +626,73 @@ export class KazumiStremioRuleBridge {
     };
   }
 
+  async createAggregatedMeta(
+    origin,
+    { id, name, description, poster, background, genres = [], releaseInfo = '', searchTerms = [] },
+  ) {
+    const terms = [...new Set(searchTerms.map((term) => term?.trim()).filter(Boolean))];
+    const targetTitles = new Set(terms.map(normalizedTitle));
+    let results = [];
+    for (const term of terms) {
+      let current = [];
+      try {
+        current = await this.engine.searchAll(term);
+      } catch {
+        continue;
+      }
+      const exact = current.filter((item) => targetTitles.has(normalizedTitle(item.name)));
+      if (exact.length > 0) {
+        results = exact;
+        break;
+      }
+      if (results.length === 0) results = current;
+    }
+    results = [...new Map(results.map((item) => [`${item.ruleId}\n${item.source}`, item])).values()];
+
+    const settled = await Promise.allSettled(
+      results.slice(0, 16).map(async (item) => ({
+        item,
+        roads: await this.engine.chapters(item.ruleId, item.source),
+      })),
+    );
+    const groups = settled.flatMap((result) => {
+      if (result.status !== 'fulfilled') return [];
+      const { item, roads } = result.value;
+      return roads.map((road) => ({
+        ruleId: item.ruleId,
+        roadName: `${item.ruleName} · ${road.name}`,
+        road,
+      }));
+    });
+    return {
+      meta: {
+        id,
+        type: 'series',
+        name,
+        description,
+        poster,
+        background,
+        genres,
+        releaseInfo,
+        videos: videosFromRoadGroups(groups),
+      },
+    };
+  }
+
   async createStreams(id) {
     const payload = decodeId(VIDEO_ID_PREFIX, id);
-    const rule = this.engine.rules.get(payload.ruleId);
-    if (!rule) {
-      throw new KazumiRuleError(`规则不存在: ${payload.ruleId}`, {
-        code: 'RULE_NOT_FOUND',
-      });
-    }
     const groups = await Promise.all(
       payload.entries.map(async (entry) => {
+        const ruleId = entry.ruleId ?? payload.ruleId;
+        const rule = this.engine.rules.get(ruleId);
+        if (!rule) {
+          throw new KazumiRuleError(`规则不存在: ${ruleId}`, {
+            code: 'RULE_NOT_FOUND',
+          });
+        }
         let mediaUrls = [];
         try {
-          mediaUrls = await this.engine.resolveEpisode(payload.ruleId, entry.url);
+          mediaUrls = await this.engine.resolveEpisode(ruleId, entry.url);
         } catch {
           // Preserve Kazumi's ability to hand unsupported WebView/JS pages to
           // a capable host instead of failing the whole episode.

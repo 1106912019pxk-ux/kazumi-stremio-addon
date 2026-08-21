@@ -13,6 +13,14 @@ import {
   loadKazumiRules,
   normalizeKazumiRule,
 } from '../src/kazumi-rule-bridge.mjs';
+import {
+  API_BODY_TYPES,
+  normalizeApiChapterConfig,
+  parseApiChapters,
+  parseRestrictedJsonPath,
+  prepareApiRequest,
+  readRestrictedJsonPath,
+} from '../src/kazumi-api-rule.mjs';
 import { createDemoRuleDocument, DEMO_RULE_ID } from '../src/demo-source.mjs';
 import {
   APPLE_COMPAT_HLS_URL,
@@ -216,6 +224,179 @@ test('supports legacy POST search rules', async (context) => {
   const results = await engine.search(rule.id, '中文 测试');
   assert.equal(results[0].name, 'POST Result');
   assert.equal(new URLSearchParams(receivedBody).get('wd'), '中文 测试');
+});
+
+test('bridges a current Kazumi API rule without legacy XPath fields', async (context) => {
+  let receivedSearchBody;
+  const upstream = createServer((request, response) => {
+    const url = new URL(request.url, 'http://fixture.test');
+    response.setHeader('content-type', 'application/json; charset=utf-8');
+    if (request.method === 'POST' && url.pathname === '/api/search') {
+      let body = '';
+      request.setEncoding('utf8');
+      request.on('data', (chunk) => {
+        body += chunk;
+      });
+      request.on('end', () => {
+        receivedSearchBody = JSON.parse(body);
+        response.end(
+          JSON.stringify({ code: 1, list: [{ vod_id: 22639, vod_name: '吞噬星空' }] }),
+        );
+      });
+      return;
+    }
+    if (request.method === 'GET' && url.pathname === '/api/detail/22639') {
+      response.end(
+        JSON.stringify({
+          list: [
+            {
+              vod_play_from: '高清线路$$$备用线路',
+              vod_play_url: `第01集$${APPLE_COMPAT_HLS_URL}$$$正片$${APPLE_HLS_URL}`,
+            },
+          ],
+        }),
+      );
+      return;
+    }
+    response.statusCode = 404;
+    response.end(JSON.stringify({ error: 'missing' }));
+  });
+  const upstreamUrl = await listen(upstream);
+  context.after(() => close(upstream));
+
+  const rule = normalizeKazumiRule(
+    {
+      api: '8',
+      type: 'anime',
+      name: 'API Fixture',
+      version: '1.0',
+      baseURL: `${upstreamUrl}/`,
+      searchMode: 'api',
+      chapterMode: 'api',
+      searchApiConfig: {
+        request: {
+          method: 'POST',
+          url: `${upstreamUrl}/api/search`,
+          headers: { 'X-Rule-Test': 'api-v8' },
+          bodyType: 'json',
+          body: { wd: '@keyword', page: 1 },
+        },
+        listPath: '$.list[*]',
+        namePath: '$.vod_name',
+        sourcePath: '$.vod_id',
+      },
+      chapterApiConfig: {
+        request: { method: 'GET', url: `${upstreamUrl}/api/detail/@source` },
+        format: 'delimited',
+        roadNamesPath: '$.list[0].vod_play_from',
+        roadEpisodesPath: '$.list[0].vod_play_url',
+      },
+    },
+    { id: 'api-fixture' },
+  );
+  const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine([rule]));
+  const addon = createServer(createRequestHandler({ ruleBridge }));
+  const addonUrl = await listen(addon);
+  context.after(() => close(addon));
+
+  const catalog = await fetch(
+    `${addonUrl}/catalog/series/${IDS.ruleCatalog}/search=${encodeURIComponent('吞噬星空')}.json`,
+  ).then((response) => response.json());
+  assert.equal(catalog.error, undefined, JSON.stringify(catalog));
+  assert.deepEqual(receivedSearchBody, { wd: '吞噬星空', page: 1 });
+  assert.equal(catalog.metas.length, 1);
+  assert.equal(catalog.metas[0].name, '吞噬星空');
+
+  const meta = await fetch(`${addonUrl}/meta/series/${catalog.metas[0].id}.json`).then(
+    (response) => response.json(),
+  );
+  assert.equal(meta.meta.videos.length, 1);
+  assert.equal(meta.meta.videos[0].title, '第01集');
+
+  const streams = await fetch(
+    `${addonUrl}/stream/series/${meta.meta.videos[0].id}.json`,
+  ).then((response) => response.json());
+  assert.equal(streams.streams.length, 2);
+  assert.deepEqual(
+    streams.streams.map((stream) => stream.name),
+    ['高清线路', '备用线路'],
+  );
+  assert.equal(streams.streams[0].url, APPLE_COMPAT_HLS_URL);
+});
+
+test('supports the restricted JSONPath and typed API request templates used by Kazumi v8', () => {
+  assert.deepEqual(parseRestrictedJsonPath("$['data']['play-sources'][0].episodes[*]"), [
+    { type: 'field', value: 'data' },
+    { type: 'field', value: 'play-sources' },
+    { type: 'index', value: 0 },
+    { type: 'field', value: 'episodes' },
+    { type: 'wildcard' },
+  ]);
+  assert.deepEqual(readRestrictedJsonPath({ data: [{ id: 1 }, { id: 2 }] }, '$.data[*].id'), [
+    1,
+    2,
+  ]);
+  assert.throws(() => parseRestrictedJsonPath('$..episodes'), /不支持的 JSONPath/);
+
+  const prepared = prepareApiRequest(
+    {
+      method: 'POST',
+      url: 'https://example.test/videos/@source',
+      headers: { 'X-Keyword': '@keyword' },
+      query: { q: '@keyword', page: 1 },
+      bodyType: API_BODY_TYPES.JSON,
+      body: { source: '@source', label: 'video-@source' },
+    },
+    { source: 'a/b', keyword: '测试' },
+  );
+  assert.equal(prepared.url, 'https://example.test/videos/a%2Fb?q=%E6%B5%8B%E8%AF%95&page=1');
+  assert.equal(prepared.request.headers['X-Keyword'], '测试');
+  assert.deepEqual(JSON.parse(prepared.request.body), { source: 'a/b', label: 'video-a/b' });
+});
+
+test('constructs playback pages from the documented Kazumi v8 nested API format', () => {
+  const config = normalizeApiChapterConfig({
+    request: { method: 'GET', url: 'https://example.test/api/videos/@source' },
+    format: 'nested',
+    roadsPath: '$.data.playSources[*]',
+    roadNamePath: '$.name',
+    episodesPath: '$.episodes[*]',
+    episodeNamePath: '$.name',
+    episodeUrlPath: '',
+    variables: { slug: '$.data.slug' },
+    episodePage: {
+      url: 'https://example.test/video/@slug/play',
+      query: { source: '@roadIndex', episode: '@episodeIndex' },
+    },
+  });
+  const roads = parseApiChapters(
+    JSON.stringify({
+      data: {
+        slug: '183878',
+        playSources: [
+          {
+            name: '线路B',
+            episodes: [
+              { name: '第1集', url: 'protected' },
+              { name: '第2集', url: 'protected' },
+            ],
+          },
+          { name: '线路C', episodes: [{ name: '第01集', url: 'protected' }] },
+        ],
+      },
+    }),
+    config,
+    { source: 'internal-id', baseUrl: 'https://example.test/' },
+  );
+  assert.equal(roads.length, 2);
+  assert.equal(
+    roads[0].episodes[1].url,
+    'https://example.test/video/183878/play?source=0&episode=1',
+  );
+  assert.equal(
+    roads[1].episodes[0].url,
+    'https://example.test/video/183878/play?source=1&episode=0',
+  );
 });
 
 test('loads trusted Kazumi JSON rules from a configured directory', async () => {
