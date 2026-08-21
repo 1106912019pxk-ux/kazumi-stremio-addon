@@ -48,7 +48,10 @@ test('serves a complete catalog-to-stream flow', async () => {
 
 test('supports health checks and CORS preflight', async () => {
   const health = await fetch(`${baseUrl}/healthz`).then((response) => response.json());
-  assert.deepEqual(health, { status: 'ok' });
+  assert.deepEqual(health, {
+    status: 'ok',
+    ruleBridge: { enabled: false, rules: 0 },
+  });
 
   const preflight = await fetch(`${baseUrl}/manifest.json`, { method: 'OPTIONS' });
   assert.equal(preflight.status, 204);

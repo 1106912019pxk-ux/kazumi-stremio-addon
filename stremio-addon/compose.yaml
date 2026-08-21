@@ -7,4 +7,7 @@ services:
       - "7000:7000"
     environment:
       PORT: "7000"
+      KAZUMI_RULES_DIR: "/rules"
+    volumes:
+      - ./rules:/rules:ro
     restart: unless-stopped

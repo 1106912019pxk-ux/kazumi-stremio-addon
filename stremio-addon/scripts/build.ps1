@@ -21,6 +21,7 @@ $version = $package.version
 Push-Location $addonRoot
 try {
     & $NodePath --check "src/model.mjs"
+    & $NodePath --check "src/kazumi-rule-bridge.mjs"
     & $NodePath --check "src/addon.mjs"
     & $NodePath --check "src/server.mjs"
     & $NodePath --check "scripts/build-static.mjs"
@@ -38,7 +39,7 @@ try {
     }
     New-Item -ItemType Directory -Path $serverStage | Out-Null
     Copy-Item -LiteralPath "src" -Destination $serverStage -Recurse
-    Copy-Item -LiteralPath "package.json", "Dockerfile", "compose.yaml", "README.md" -Destination $serverStage
+    Copy-Item -LiteralPath "package.json", "pnpm-lock.yaml", "Dockerfile", "compose.yaml", "README.md" -Destination $serverStage
     Copy-Item -LiteralPath (Join-Path $repositoryRoot "LICENSE") -Destination (Join-Path $serverStage "LICENSE")
 
     $serverArchive = Join-Path $releaseRoot "kazumi-stremio-addon-server-v$version.zip"

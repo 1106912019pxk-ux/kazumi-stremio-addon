@@ -29,7 +29,10 @@ jobs:
 
       - name: Verify and package
         shell: pwsh
-        run: .\stremio-addon\scripts\build.ps1
+        run: |
+          corepack enable
+          pnpm --dir stremio-addon install --frozen-lockfile
+          .\stremio-addon\scripts\build.ps1
 
       - name: Upload packages
         uses: actions/upload-artifact@v4

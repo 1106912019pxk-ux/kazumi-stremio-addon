@@ -9,6 +9,7 @@ import {
   createMeta,
   createStreams,
 } from '../src/model.mjs';
+import { BACKGROUND_SVG, ICON_SVG, POSTER_SVG } from '../src/addon.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const addonRoot = resolve(scriptDirectory, '..');
@@ -19,7 +20,10 @@ async function writeJson(root, relativePath, value) {
   await writeFile(target, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-export async function buildStatic(targetDirectory = join(addonRoot, 'dist', 'static')) {
+export async function buildStatic(
+  targetDirectory = join(addonRoot, 'dist', 'static'),
+  publicBaseUrl = process.env.PUBLIC_URL ?? '',
+) {
   const resolvedTarget = resolve(targetDirectory);
   const normalizedTarget = `${resolvedTarget.toLowerCase()}${process.platform === 'win32' ? '\\' : '/'}`;
   const allowedRoots = [resolve(addonRoot), resolve(tmpdir())].map(
@@ -33,16 +37,24 @@ export async function buildStatic(targetDirectory = join(addonRoot, 'dist', 'sta
   await rm(resolvedTarget, { recursive: true, force: true });
   await mkdir(resolvedTarget, { recursive: true });
 
-  await writeJson(resolvedTarget, 'manifest.json', createManifest());
+  const origin = publicBaseUrl.replace(/\/$/, '');
+  if (origin) {
+    const parsedOrigin = new URL(origin);
+    if (parsedOrigin.protocol !== 'https:') {
+      throw new Error(`Static public URL must use HTTPS: ${origin}`);
+    }
+  }
+
+  await writeJson(resolvedTarget, 'manifest.json', createManifest(origin));
   await writeJson(
     resolvedTarget,
     join('catalog', 'series', `${IDS.catalog}.json`),
-    createCatalog(),
+    createCatalog(origin),
   );
   await writeJson(
     resolvedTarget,
     join('meta', 'series', `${IDS.series}.json`),
-    createMeta(),
+    createMeta(origin),
   );
   await writeJson(
     resolvedTarget,
@@ -50,6 +62,11 @@ export async function buildStatic(targetDirectory = join(addonRoot, 'dist', 'sta
     createStreams(),
   );
   await writeJson(resolvedTarget, 'healthz.json', { status: 'ok' });
+
+  await mkdir(join(resolvedTarget, 'assets'), { recursive: true });
+  await writeFile(join(resolvedTarget, 'assets', 'icon.svg'), ICON_SVG, 'utf8');
+  await writeFile(join(resolvedTarget, 'assets', 'poster.svg'), POSTER_SVG, 'utf8');
+  await writeFile(join(resolvedTarget, 'assets', 'background.svg'), BACKGROUND_SVG, 'utf8');
 
   await writeFile(
     join(resolvedTarget, 'index.html'),

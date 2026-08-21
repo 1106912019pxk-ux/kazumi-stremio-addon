@@ -11,13 +11,21 @@ test('builds a static HTTPS-hostable add-on bundle', async () => {
   const output = join(temporaryRoot, 'static');
 
   try {
-    await buildStatic(output);
+    await buildStatic(output, 'https://example.test/kazumi-addon');
     const manifest = JSON.parse(await readFile(join(output, 'manifest.json'), 'utf8'));
+    const catalog = JSON.parse(
+      await readFile(join(output, 'catalog', 'series', `${IDS.catalog}.json`), 'utf8'),
+    );
     const streams = JSON.parse(
       await readFile(join(output, 'stream', 'series', `${IDS.episode}.json`), 'utf8'),
     );
 
     assert.equal(manifest.id, 'org.kazumi.bridge.test');
+    assert.equal(manifest.version, '0.2.0');
+    assert.equal(
+      catalog.metas[0].poster,
+      'https://example.test/kazumi-addon/assets/poster.svg',
+    );
     assert.equal(streams.streams.length, 1);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

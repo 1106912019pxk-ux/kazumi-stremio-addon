@@ -5,14 +5,15 @@ import {
   createMeta,
   createStreams,
 } from './model.mjs';
+import { KazumiRuleError } from './kazumi-rule-bridge.mjs';
 
-const ICON_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+export const ICON_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <rect width="512" height="512" rx="112" fill="#7c3aed"/>
   <path d="M160 128v256l224-128z" fill="#fff"/>
 </svg>`;
 
-const POSTER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+export const POSTER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="600" height="900" viewBox="0 0 600 900">
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#111827"/><stop offset="1" stop-color="#7c3aed"/></linearGradient></defs>
   <rect width="600" height="900" fill="url(#g)"/>
@@ -22,7 +23,7 @@ const POSTER_SVG = `<?xml version="1.0" encoding="UTF-8"?>
   <text x="300" y="670" text-anchor="middle" fill="#ddd6fe" font-family="sans-serif" font-size="30">Network Test</text>
 </svg>`;
 
-const BACKGROUND_SVG = `<?xml version="1.0" encoding="UTF-8"?>
+export const BACKGROUND_SVG = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
   <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#111827"/><stop offset="1" stop-color="#6d28d9"/></linearGradient></defs>
   <rect width="1920" height="1080" fill="url(#g)"/>
@@ -56,7 +57,7 @@ function getOrigin(request) {
   return `${protocol}://${host}`;
 }
 
-export function handleRequest(request, response) {
+async function handleRequestCore(request, response, ruleBridge) {
   if (request.method === 'OPTIONS') {
     response.writeHead(204, commonHeaders('text/plain; charset=utf-8'));
     response.end();
@@ -89,12 +90,22 @@ export function handleRequest(request, response) {
   }
 
   if (pathname === '/healthz' || pathname === '/healthz.json') {
-    sendJson(response, 200, { status: 'ok' });
+    sendJson(response, 200, {
+      status: 'ok',
+      ruleBridge: {
+        enabled: ruleBridge?.enabled ?? false,
+        rules: ruleBridge?.engine.size ?? 0,
+      },
+    });
     return;
   }
 
   if (pathname === '/manifest.json') {
-    sendJson(response, 200, createManifest(origin));
+    sendJson(
+      response,
+      200,
+      createManifest(origin, { enableRuleBridge: ruleBridge?.enabled ?? false }),
+    );
     return;
   }
 
@@ -111,6 +122,30 @@ export function handleRequest(request, response) {
   if (pathname === `/stream/series/${IDS.episode}.json`) {
     sendJson(response, 200, createStreams());
     return;
+  }
+
+  if (ruleBridge?.enabled) {
+    const searchPrefix = `/catalog/series/${IDS.ruleCatalog}/`;
+    if (pathname.startsWith(searchPrefix) && pathname.endsWith('.json')) {
+      const extra = pathname.slice(searchPrefix.length, -'.json'.length);
+      const keyword = new URLSearchParams(extra).get('search') ?? '';
+      sendJson(response, 200, await ruleBridge.createCatalog(origin, keyword));
+      return;
+    }
+
+    const ruleMetaMatch = pathname.match(/^\/meta\/series\/(kazumi-rule-item-[A-Za-z0-9_-]+)\.json$/);
+    if (ruleMetaMatch) {
+      sendJson(response, 200, await ruleBridge.createMeta(origin, ruleMetaMatch[1]));
+      return;
+    }
+
+    const ruleStreamMatch = pathname.match(
+      /^\/stream\/series\/(kazumi-rule-video-[A-Za-z0-9_-]+)\.json$/,
+    );
+    if (ruleStreamMatch) {
+      sendJson(response, 200, ruleBridge.createStreams(ruleStreamMatch[1]));
+      return;
+    }
   }
 
   if (pathname === '/assets/icon.svg') {
@@ -130,3 +165,27 @@ export function handleRequest(request, response) {
 
   sendJson(response, 404, { error: 'Not found' });
 }
+
+function errorStatus(error) {
+  if (!(error instanceof KazumiRuleError)) return 500;
+  if (error.code === 'RULE_NOT_FOUND') return 404;
+  if (error.code.startsWith('UPSTREAM_')) return 502;
+  return 400;
+}
+
+export function createRequestHandler({ ruleBridge } = {}) {
+  return (request, response) => {
+    handleRequestCore(request, response, ruleBridge).catch((error) => {
+      if (response.headersSent) {
+        response.destroy(error);
+        return;
+      }
+      sendJson(response, errorStatus(error), {
+        error: error instanceof Error ? error.message : 'Internal server error',
+        ...(error instanceof KazumiRuleError ? { code: error.code } : {}),
+      });
+    });
+  };
+}
+
+export const handleRequest = createRequestHandler();

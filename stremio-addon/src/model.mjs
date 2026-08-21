@@ -1,20 +1,23 @@
-export const ADDON_VERSION = '0.1.0';
+export const ADDON_VERSION = '0.2.0';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',
   series: 'kazumi-test-apple-hls',
   episode: 'kazumi-test-apple-hls-1',
+  ruleCatalog: 'kazumi-rule-search',
 });
 
 export const APPLE_HLS_URL =
   'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_adv_example_hevc/master.m3u8';
 
-export function createManifest(origin) {
+export function createManifest(origin, { enableRuleBridge = false } = {}) {
   const manifest = {
     id: 'org.kazumi.bridge.test',
     version: ADDON_VERSION,
-    name: 'Kazumi Bridge Test',
-    description: 'Kazumi 规则桥接器的公网 HLS 协议验证插件',
+    name: 'Kazumi Bridge',
+    description: enableRuleBridge
+      ? 'Kazumi JSON 规则到 Stremio/KDTIVI 的兼容桥接器'
+      : 'Kazumi 规则桥接器的公网 HLS 协议验证插件',
     types: ['series'],
     resources: [
       'catalog',
@@ -27,6 +30,16 @@ export function createManifest(origin) {
         id: IDS.catalog,
         name: 'Kazumi 网络源验证',
       },
+      ...(enableRuleBridge
+        ? [
+            {
+              type: 'series',
+              id: IDS.ruleCatalog,
+              name: 'Kazumi 规则搜索',
+              extra: [{ name: 'search', isRequired: true }],
+            },
+          ]
+        : []),
     ],
     idPrefixes: ['kazumi-'],
     behaviorHints: {

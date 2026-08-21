@@ -3,6 +3,8 @@ FROM node:22-alpine
 WORKDIR /app
 COPY LICENSE ./LICENSE
 COPY stremio-addon/package.json ./package.json
+COPY stremio-addon/pnpm-lock.yaml ./pnpm-lock.yaml
+RUN corepack enable && pnpm install --prod --frozen-lockfile
 COPY stremio-addon/src ./src
 
 ENV HOST=0.0.0.0

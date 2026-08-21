@@ -1,20 +1,20 @@
 {
   "name": "kazumi-stremio-addon",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Stremio-compatible bridge for Kazumi-style media sources",
   "type": "module",
   "license": "GPL-3.0-only",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19.0"
   },
   "scripts": {
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
-    "check": "node --check src/model.mjs && node --check src/addon.mjs && node --check src/server.mjs && node --check scripts/build-static.mjs",
+    "check": "node --check src/model.mjs && node --check src/kazumi-rule-bridge.mjs && node --check src/addon.mjs && node --check src/server.mjs && node --check scripts/build-static.mjs",
     "test": "node --test",
     "build:static": "node scripts/build-static.mjs",
-    "verify": "npm run check && npm test && npm run build:static"
+    "verify": "pnpm run check && pnpm test && pnpm run build:static"
   },
   "files": [
     "src/",
@@ -22,5 +22,10 @@
     "Dockerfile",
     "compose.yaml",
     "README.md"
-  ]
+  ],
+  "packageManager": "pnpm@11.19.0",
+  "dependencies": {
+    "fontoxpath": "^3.34.0",
+    "linkedom": "^0.18.13"
+  }
 }
