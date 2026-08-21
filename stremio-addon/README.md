@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.4` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录和可供 KDTIVI 真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.5` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录、KDTIVI HLS 兼容输出策略和可供真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
 
 ## 当前验证范围
 
@@ -14,6 +14,7 @@
 - HLS/MP4 等直链与 User-Agent/Referer 播放请求头输出；
 - `<video>`、`<source>` 和常见内联播放器配置中的 HLS/MP4 媒体探测；
 - WebView/JS Hook 播放页的显式降级，不把未解析页面伪装成视频直链。
+- 默认只向 KDTIVI 输出已验证的 HTTPS 普通 HLS，并过滤 MP4、WebM 及 URL 可识别的 HEVC/H.265/AV1 流。
 
 ## 本地运行
 
@@ -47,7 +48,14 @@ $env:KAZUMI_DEMO_MODE = "true"
 node src/server.mjs
 ```
 
-安装该 Node 服务的 manifest 后，优先从 KDTIVI 的电视节目分类选择“Kazumi 动态规则验收”，再打开“Kazumi 动态规则播放演示”。其详情包含 2 集、每集 3 条线路：第一条是无额外请求头的 HTTPS MP4，后两条是 HLS 兼容流和 HEVC HLS。线路由规则先访问本地播放页，再探测并返回媒体地址。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换和播放页媒体探测。
+安装该 Node 服务的 manifest 后，优先从 KDTIVI 的电视节目分类选择“Kazumi 动态规则验收”，再打开“Kazumi 动态规则播放演示”。详情仍由规则解析出 2 集和三类媒体候选，但服务默认使用 `kdtivi-hls` 策略，只向宿主返回真机已验证的 HTTPS 普通 HLS；失败的 MP4 与 HEVC 样例不再出现在播放线路中。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换、播放页媒体探测和宿主兼容筛选。
+
+如需在完整 Stremio 客户端中保留所有原始媒体候选，可显式切换策略：
+
+```powershell
+$env:KAZUMI_STREAM_POLICY = "all"
+node src/server.mjs
+```
 
 不同宿主对 Stremio 搜索目录的支持并不一致。KDTIVI 的全局搜索可能只显示宿主自己的 TMDB 结果；这些结果不是 Kazumi 规则返回的，也不会自动使用仅声明 `kazumi-` ID 的桥接流。因此动态验收应从上述专用目录进入，避免把宿主元数据结果误认为 Kazumi 内容。
 
@@ -103,7 +111,7 @@ pnpm run build:static
 1. 将静态包部署到 HTTPS 站点，或者在局域网启动 Node 服务。
 2. 在 KDTIVI 的 Addons 页面粘贴完整的 `manifest.json` 地址。
 3. 固定 Pages 版打开“Kazumi 网络源验证”；动态服务版选择“Kazumi 动态规则验收”目录。支持 Stremio 搜索目录的宿主也可由“Kazumi 规则搜索”返回结果。
-4. 进入“第 1 集 · Bip Bop HLS”，选择“Apple HLS”。
+4. 进入“第 1 集 · HLS 兼容流”，选择唯一的“KDTIVI 兼容 HLS”线路。
 5. 记录目录、封面、播放、拖动、音轨、字幕和进度恢复结果。
 
 ## 下一阶段边界
@@ -114,4 +122,4 @@ pnpm run build:static
 
 ## 网络排查
 
-如果同一地址关闭 VPN 后可正常加载，而开启 VPN 后出现 TLS 错误，说明插件协议和服务路由已经可达，问题位于 VPN 的 DNS、证书检查或出口链路。该问题不影响规则引擎开发，可在部署动态服务时单独处理。
+如果同一地址关闭 VPN 后可正常加载，而开启 VPN 后出现 TLS 错误，并且服务日志中没有对应请求，故障位于 VPN 到该公网域名的 DNS、TLS 检查或出口链路，而不在 Kazumi/Stremio 协议。开发验收可临时使用不同域名体系的第二条 HTTPS 隧道；长期部署应使用固定域名和受控反向代理，避免依赖临时隧道的随机域名与会话寿命。

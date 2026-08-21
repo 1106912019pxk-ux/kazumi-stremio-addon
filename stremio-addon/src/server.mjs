@@ -4,6 +4,7 @@ import { createRequestHandler } from './addon.mjs';
 import {
   KazumiRuleEngine,
   KazumiStremioRuleBridge,
+  STREAM_POLICIES,
   loadKazumiRules,
   normalizeKazumiRule,
 } from './kazumi-rule-bridge.mjs';
@@ -31,8 +32,11 @@ const demoRule = demoEnabled
 const rules = [...(demoRule ? [demoRule] : []), ...configuredRules];
 const featuredKeyword =
   process.env.KAZUMI_FEATURED_SEARCH ?? (demoEnabled ? 'Kazumi' : '');
+const streamPolicy =
+  process.env.KAZUMI_STREAM_POLICY ?? STREAM_POLICIES.KDTIVI_HLS;
 const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine(rules), {
   featuredKeyword,
+  streamPolicy,
 });
 const server = createServer(
   createRequestHandler({
@@ -49,6 +53,7 @@ server.listen(port, host, () => {
   const publicUrl = process.env.PUBLIC_URL ?? `http://127.0.0.1:${port}`;
   console.log(`Kazumi Bridge: ${publicUrl}/manifest.json`);
   console.log(`Kazumi rules loaded: ${rules.length}`);
+  console.log(`Stream policy: ${streamPolicy}`);
   if (demoEnabled) console.log('Authorized dynamic demo: enabled (search keyword: Kazumi)');
   if (ruleBridge.featuredEnabled) {
     console.log(`Featured rule catalog: enabled (keyword: ${featuredKeyword})`);

@@ -11,6 +11,11 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024;
 const DEFAULT_USER_AGENT = 'Kazumi-Stremio-Bridge/0.2';
 
+export const STREAM_POLICIES = Object.freeze({
+  ALL: 'all',
+  KDTIVI_HLS: 'kdtivi-hls',
+});
+
 export class KazumiRuleError extends Error {
   constructor(message, { code = 'RULE_ERROR', cause } = {}) {
     super(message, { cause });
@@ -395,6 +400,50 @@ function webReadyMediaUrl(value) {
   }
 }
 
+function mediaKind(value) {
+  try {
+    const path = new URL(value).pathname.toLowerCase();
+    if (path.endsWith('.m3u8')) return 'hls';
+    if (path.endsWith('.mp4') || path.endsWith('.m4v')) return 'mp4';
+    if (path.endsWith('.webm')) return 'webm';
+  } catch {
+    // Non-URL entries are ranked after direct media.
+  }
+  return 'other';
+}
+
+function likelyUnsupportedHlsCodec(value) {
+  try {
+    const url = new URL(value);
+    return /(?:^|[-_./?&=])(hevc|h265|h-265|x265|av1)(?:[-_./?&=]|$)/i.test(
+      `${url.pathname}${url.search}`,
+    );
+  } catch {
+    return true;
+  }
+}
+
+export function isKdtiviCompatibleMedia(value) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      mediaKind(value) === 'hls' &&
+      !likelyUnsupportedHlsCodec(value)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function streamRank(stream) {
+  if (isKdtiviCompatibleMedia(stream.url)) return 0;
+  if (mediaKind(stream.url) === 'hls') return 1;
+  if (mediaKind(stream.url) === 'mp4') return 2;
+  if (mediaKind(stream.url) === 'webm') return 3;
+  return 4;
+}
+
 function mediaUrlsFromHtml(html, pageUrl) {
   const values = [];
   const add = (value) => {
@@ -431,9 +480,16 @@ function mediaUrlsFromHtml(html, pageUrl) {
 }
 
 export class KazumiStremioRuleBridge {
-  constructor(engine, { featuredKeyword = '' } = {}) {
+  constructor(
+    engine,
+    { featuredKeyword = '', streamPolicy = STREAM_POLICIES.ALL } = {},
+  ) {
+    if (!Object.values(STREAM_POLICIES).includes(streamPolicy)) {
+      throw new TypeError(`Unsupported stream policy: ${streamPolicy}`);
+    }
     this.engine = engine;
     this.featuredKeyword = featuredKeyword.trim();
+    this.streamPolicy = streamPolicy;
   }
 
   get enabled() {
@@ -552,6 +608,16 @@ export class KazumiStremioRuleBridge {
         }));
       }),
     );
-    return { streams: groups.flat() };
+    const streams = groups.flat().sort((left, right) => streamRank(left) - streamRank(right));
+    if (this.streamPolicy !== STREAM_POLICIES.KDTIVI_HLS) return { streams };
+
+    return {
+      streams: streams
+        .filter((stream) => isKdtiviCompatibleMedia(stream.url))
+        .map((stream) => ({
+          ...stream,
+          description: `${stream.description} · KDTIVI 兼容 HLS`,
+        })),
+    };
   }
 }

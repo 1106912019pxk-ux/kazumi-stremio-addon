@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { after, before, test } from 'node:test';
 import { handleRequest } from '../src/addon.mjs';
-import { APPLE_HLS_URL } from '../src/model.mjs';
+import { APPLE_COMPAT_HLS_URL } from '../src/model.mjs';
 
 let server;
 let baseUrl;
@@ -43,14 +43,14 @@ test('serves a complete catalog-to-stream flow', async () => {
   const streams = await fetch(`${baseUrl}/stream/series/${episodeId}.json`).then((response) =>
     response.json(),
   );
-  assert.equal(streams.streams[0].url, APPLE_HLS_URL);
+  assert.equal(streams.streams[0].url, APPLE_COMPAT_HLS_URL);
 });
 
 test('supports health checks and CORS preflight', async () => {
   const health = await fetch(`${baseUrl}/healthz`).then((response) => response.json());
   assert.deepEqual(health, {
     status: 'ok',
-    ruleBridge: { enabled: false, rules: 0 },
+    ruleBridge: { enabled: false, rules: 0, streamPolicy: 'static' },
   });
 
   const preflight = await fetch(`${baseUrl}/manifest.json`, { method: 'OPTIONS' });

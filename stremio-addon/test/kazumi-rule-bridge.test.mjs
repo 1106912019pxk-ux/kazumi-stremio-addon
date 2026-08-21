@@ -8,6 +8,8 @@ import { createRequestHandler } from '../src/addon.mjs';
 import {
   KazumiRuleEngine,
   KazumiStremioRuleBridge,
+  STREAM_POLICIES,
+  isKdtiviCompatibleMedia,
   loadKazumiRules,
   normalizeKazumiRule,
 } from '../src/kazumi-rule-bridge.mjs';
@@ -113,9 +115,9 @@ test('bridges a Kazumi XPath rule from search to direct HLS streams', async (con
     `${addonUrl}/stream/series/${meta.meta.videos[0].id}.json`,
   ).then((response) => response.json());
   assert.equal(streams.streams.length, 3);
-  assert.equal(streams.streams[0].url, APPLE_HLS_URL);
-  assert.equal(streams.streams[1].url, APPLE_COMPAT_HLS_URL);
-  assert.equal(streams.streams[1].description, 'Kazumi 播放页媒体探测');
+  assert.equal(streams.streams[0].url, APPLE_COMPAT_HLS_URL);
+  assert.equal(streams.streams[0].description, 'Kazumi 播放页媒体探测');
+  assert.equal(streams.streams[1].url, APPLE_HLS_URL);
   assert.equal(streams.streams[2].externalUrl, `${upstreamUrl}/watch/needs-webview`);
   assert.equal(streams.streams[2].description, '需要 WebView/JS Hook 进一步解析');
 });
@@ -134,6 +136,7 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
   });
   const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine([demoRule]), {
     featuredKeyword: 'Kazumi',
+    streamPolicy: STREAM_POLICIES.KDTIVI_HLS,
   });
   requestHandler = createRequestHandler({ ruleBridge });
 
@@ -156,23 +159,26 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
     (response) => response.json(),
   );
   assert.equal(meta.meta.videos.length, 2);
-  assert.equal(meta.meta.videos[0].title, '第 1 集 · HTTPS MP4');
+  assert.equal(meta.meta.videos[0].title, '第 1 集 · HLS 兼容流');
 
   const firstEpisode = await fetch(
     `${addonUrl}/stream/series/${meta.meta.videos[0].id}.json`,
   ).then((response) => response.json());
-  assert.equal(firstEpisode.streams.length, 3);
+  assert.equal(firstEpisode.streams.length, 1);
   assert.deepEqual(
     firstEpisode.streams.map((stream) => stream.url),
-    [MDN_MP4_URL, APPLE_COMPAT_HLS_URL, APPLE_HLS_URL],
+    [APPLE_COMPAT_HLS_URL],
   );
   assert.deepEqual(
     firstEpisode.streams.map((stream) => stream.name),
-    ['播放线路1', '播放线路2', '播放线路3'],
+    ['播放线路1'],
   );
-  assert.equal(firstEpisode.streams[0].behaviorHints.notWebReady, false);
+  assert.equal(firstEpisode.streams[0].behaviorHints.notWebReady, true);
   assert.equal(firstEpisode.streams[0].behaviorHints.proxyHeaders, undefined);
-  assert.equal(firstEpisode.streams[1].behaviorHints.notWebReady, true);
+  assert.match(firstEpisode.streams[0].description, /KDTIVI 兼容 HLS/);
+  assert.equal(isKdtiviCompatibleMedia(MDN_MP4_URL), false);
+  assert.equal(isKdtiviCompatibleMedia(APPLE_HLS_URL), false);
+  assert.equal(isKdtiviCompatibleMedia(APPLE_COMPAT_HLS_URL), true);
 });
 
 test('supports legacy POST search rules', async (context) => {

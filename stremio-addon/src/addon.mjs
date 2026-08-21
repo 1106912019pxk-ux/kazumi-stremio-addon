@@ -105,6 +105,7 @@ async function handleRequestCore(request, response, ruleBridge, onRequest) {
       ruleBridge: {
         enabled: ruleBridge?.enabled ?? false,
         rules: ruleBridge?.engine.size ?? 0,
+        streamPolicy: ruleBridge?.streamPolicy ?? 'static',
       },
     });
     return;
