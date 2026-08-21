@@ -324,6 +324,89 @@ test('bridges a current Kazumi API rule without legacy XPath fields', async (con
   assert.equal(streams.streams[0].url, APPLE_COMPAT_HLS_URL);
 });
 
+test('adapts the official Sorani API rule to an anonymous signed HLS stream', async () => {
+  const hlsUrl =
+    'https://www.sorani-vids.xyz/videos/example/index.m3u8?timestamp=1&key=test';
+  const requests = [];
+  const fetchImpl = async (input, init = {}) => {
+    const url = new URL(input);
+    requests.push({ url, headers: new Headers(init.headers) });
+    const json = (document) =>
+      new Response(JSON.stringify(document), {
+        status: 200,
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+      });
+    if (url.pathname === '/sorani-cms/api/video' && url.searchParams.has('keyword')) {
+      return json({ data: { records: [{ id: 76, title: '航海王' }] } });
+    }
+    if (url.pathname === '/sorani-cms/api/video/76') {
+      return json({
+        data: {
+          episodes: [
+            { episodeId: 61864, episodeLabel: '第0001集', episodeOrder: 1 },
+          ],
+        },
+      });
+    }
+    if (url.pathname === '/sorani-cms/api/video/episode/61864/play') {
+      return json({ data: { canPlay: true, vipRequired: false, playUrl: hlsUrl, hls: true } });
+    }
+    return new Response('missing', { status: 404 });
+  };
+  const rule = normalizeKazumiRule(
+    {
+      api: '8',
+      name: 'sorani',
+      baseURL: 'https://www.sorani.net/',
+      useWebview: true,
+      searchMode: 'api',
+      chapterMode: 'api',
+      searchApiConfig: {
+        request: {
+          method: 'GET',
+          url: 'https://api.sorani.cc/sorani-cms/api/video',
+          query: { keyword: '@keyword' },
+        },
+        listPath: '$.data.records[*]',
+        namePath: '$.title',
+        sourcePath: '$.id',
+      },
+      chapterApiConfig: {
+        request: {
+          method: 'GET',
+          url: 'https://api.sorani.cc/sorani-cms/api/video/@source',
+        },
+        format: 'nested',
+        roadsPath: '$.data',
+        episodesPath: '$.episodes[*]',
+        episodeNamePath: '$.episodeLabel',
+        episodeUrlPath: '$.episodeOrder',
+        episodePage: {
+          url: 'https://www.sorani.net/anime/mal/@source/episode/@episodeUrl',
+        },
+      },
+    },
+    { id: 'sorani' },
+  );
+  assert.equal(rule.playMode, 'api');
+  assert.equal(rule.chapterApiConfig.episodeVariables.episodeId, '$.episodeId');
+
+  const bridge = new KazumiStremioRuleBridge(new KazumiRuleEngine([rule], { fetchImpl }));
+  const catalog = await bridge.createCatalog('https://addon.test', '海贼王');
+  const meta = await bridge.createMeta('https://addon.test', catalog.metas[0].id);
+  const result = await bridge.createStreams(meta.meta.videos[0].id);
+
+  assert.equal(result.streams.length, 1);
+  assert.equal(result.streams[0].url, hlsUrl);
+  assert.deepEqual(result.streams[0].behaviorHints.proxyHeaders.request, {
+    Origin: 'https://www.sorani.net',
+    Referer: 'https://www.sorani.net/',
+  });
+  const playRequest = requests.find(({ url }) => url.pathname.endsWith('/61864/play'));
+  assert.equal(playRequest.headers.get('origin'), 'https://www.sorani.net');
+  assert.equal(playRequest.headers.get('referer'), 'https://www.sorani.net/');
+});
+
 test('supports the restricted JSONPath and typed API request templates used by Kazumi v8', () => {
   assert.deepEqual(parseRestrictedJsonPath("$['data']['play-sources'][0].episodes[*]"), [
     { type: 'field', value: 'data' },

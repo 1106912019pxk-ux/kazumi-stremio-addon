@@ -5,14 +5,18 @@ import { parseHTML } from 'linkedom';
 import {
   RULE_MODES,
   normalizeApiChapterConfig,
+  normalizeApiPlayConfig,
   normalizeApiSearchConfig,
   normalizeRuleMode,
   parseApiChapters,
+  parseApiPlay,
   parseApiSearch,
   prepareApiRequest,
   validateApiChapterConfig,
+  validateApiPlayConfig,
   validateApiSearchConfig,
 } from './kazumi-api-rule.mjs';
+import { adaptKazumiRuleInput } from './kazumi-rule-adapters.mjs';
 import { KazumiRuleError } from './rule-error.mjs';
 import { ExpiringPromiseCache, RuleHealthRegistry } from './rule-runtime-state.mjs';
 
@@ -76,11 +80,14 @@ export function normalizeKazumiRule(input, { id } = {}) {
     });
   }
 
+  input = adaptKazumiRuleInput(input, { id });
   const name = requiredString(input.name, 'name', '未命名规则');
   const searchMode = normalizeRuleMode(input.searchMode);
   const chapterMode = normalizeRuleMode(input.chapterMode);
+  const playMode = normalizeRuleMode(input.playMode);
   const searchApiConfig = normalizeApiSearchConfig(input.searchApiConfig);
   const chapterApiConfig = normalizeApiChapterConfig(input.chapterApiConfig);
+  const playApiConfig = normalizeApiPlayConfig(input.playApiConfig);
   const rule = {
     id: slug(id ?? name),
     api: String(input.api ?? '1'),
@@ -100,6 +107,7 @@ export function normalizeKazumiRule(input, { id } = {}) {
     baseUrl: httpUrl(input.baseURL, 'baseURL', name),
     searchMode,
     chapterMode,
+    playMode,
     searchUrl: typeof input.searchURL === 'string' ? input.searchURL.trim() : '',
     searchList: typeof input.searchList === 'string' ? input.searchList.trim() : '',
     searchName: typeof input.searchName === 'string' ? input.searchName.trim() : '',
@@ -108,6 +116,7 @@ export function normalizeKazumiRule(input, { id } = {}) {
     chapterResult: typeof input.chapterResult === 'string' ? input.chapterResult.trim() : '',
     searchApiConfig,
     chapterApiConfig,
+    playApiConfig,
   };
 
   if (searchMode === RULE_MODES.API) {
@@ -124,6 +133,7 @@ export function normalizeKazumiRule(input, { id } = {}) {
     rule.chapterRoads = requiredString(input.chapterRoads, 'chapterRoads', name);
     rule.chapterResult = requiredString(input.chapterResult, 'chapterResult', name);
   }
+  if (playMode === RULE_MODES.API) validateApiPlayConfig(playApiConfig);
 
   // Catch selector syntax errors at load time instead of after a client query.
   const { document } = parseHTML('<html><body><div><a>test</a></div></body></html>');
@@ -408,18 +418,28 @@ export class KazumiRuleEngine {
     return roads;
   }
 
-  async resolveEpisode(ruleId, source) {
+  async resolveEpisode(ruleId, episode) {
     return this.health.observe(
       ruleId,
       'resolveEpisode',
-      () => this.#resolveEpisode(ruleId, source),
+      () => this.#resolveEpisode(ruleId, episode),
     );
   }
 
-  async #resolveEpisode(ruleId, source) {
+  async #resolveEpisode(ruleId, episode) {
     const rule = this.#getRule(ruleId);
+    const source = typeof episode === 'string' ? episode : episode?.url;
+    if (rule.playMode === RULE_MODES.API) {
+      const variables = {
+        source,
+        ...(episode && typeof episode === 'object' ? episode.variables : {}),
+      };
+      const prepared = prepareApiRequest(rule.playApiConfig.request, variables);
+      const raw = await this.#fetchText(prepared.url, prepared.request);
+      return parseApiPlay(raw, rule.playApiConfig);
+    }
     const sourceUrl = resolveHttpUrl(rule.baseUrl, source, '播放页链接');
-    if (directMediaUrl(sourceUrl)) return [sourceUrl];
+    if (directMediaUrl(sourceUrl)) return { mediaUrls: [sourceUrl], mediaHeaders: {} };
 
     // Arbitrary cross-origin playback pages would turn the bridge into an
     // SSRF proxy. Kazumi rules may still return cross-origin direct media,
@@ -429,7 +449,7 @@ export class KazumiRuleEngine {
       method: 'GET',
       headers: requestHeaders(rule),
     });
-    return mediaUrlsFromHtml(html, sourceUrl);
+    return { mediaUrls: mediaUrlsFromHtml(html, sourceUrl), mediaHeaders: {} };
   }
 
   status() {
@@ -737,8 +757,11 @@ export class KazumiStremioRuleBridge {
           });
         }
         let mediaUrls = [];
+        let adapterMediaHeaders = {};
         try {
-          mediaUrls = await this.engine.resolveEpisode(ruleId, entry.url);
+          const resolved = await this.engine.resolveEpisode(ruleId, entry);
+          mediaUrls = resolved.mediaUrls;
+          adapterMediaHeaders = resolved.mediaHeaders;
         } catch {
           // Preserve Kazumi's ability to hand unsupported WebView/JS pages to
           // a capable host instead of failing the whole episode.
@@ -762,6 +785,7 @@ export class KazumiStremioRuleBridge {
             ? { 'User-Agent': rule.userAgent }
             : {}),
           ...(rule.referer ? { Referer: rule.referer } : {}),
+          ...adapterMediaHeaders,
         };
         return mediaUrls.map((mediaUrl, mediaIndex) => ({
           ...common,

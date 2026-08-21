@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.4.0-dev.3` 已同时兼容 Kazumi 旧式 XPath 规则和 API level 8 的 JSON API 规则，并将 Bangumi 周播目录、动画元数据、搜索、选集、多来源线路和播放页构造统一转换成 Stremio 资源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.4.0-dev.4` 已同时兼容 Kazumi 旧式 XPath 规则和 API level 8 的 JSON API 规则，并将 Bangumi 周播目录、动画元数据、搜索、选集、多来源线路和播放解析统一转换成 Stremio 资源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的规则。
 
 ## 当前验证范围
 
@@ -12,6 +12,7 @@
 - Kazumi 旧式 XPath JSON 规则读取、校验和同源安全边界；
 - Kazumi API level 8 的 `searchMode/chapterMode=api`、受限 JSONPath 和请求模板；
 - API 搜索内部 ID、嵌套 JSON 选集、分隔字符串选集和播放页模板；
+- 每集 API 变量、可选播放 API、匿名签名 HLS 和受限媒体请求头；
 - Bangumi 公共周播目录、封面、简介、年份、标签与基础内存缓存；
 - 同一 Bangumi 动画下的多条 Kazumi 规则、多线路和统一剧集聚合；
 - GET/POST 搜索、详情选集、多线路和 Stremio 搜索目录转换；
@@ -65,6 +66,8 @@ node src/server.mjs
 规则搜索和选集结果默认缓存 60 秒，连续失败两次的来源冷却 120 秒，避免一个失效站点拖慢全部来源。可通过 `KAZUMI_CACHE_TTL_MS`、`KAZUMI_RULE_FAILURE_THRESHOLD` 和 `KAZUMI_RULE_COOLDOWN_MS` 调整。`/status.json` 只展示规则名称、成功/失败次数、延迟和冷却状态，不公开来源 URL、搜索词、播放链接或请求头。
 
 API 模式兼容 Kazumi API level 8 的 `searchMode`、`chapterMode`、`searchApiConfig` 和 `chapterApiConfig`。支持 GET/POST、JSON/表单请求体、请求头、查询参数、`@keyword`、`@source`、响应变量、线路/剧集序号和播放页模板。JSONPath 与 Kazumi 一样只接受字段、数组下标、通配符和带引号字段名，不执行过滤器、递归查找或表达式。
+
+桥接层另外提供受控的 API 播放扩展：章节响应可保留每集变量，再在用户点播时获取短时有效的 HLS/MP4 地址。上游 Kazumi 规则尚不能描述这一步时，兼容逻辑放在独立适配器中，并同时固定规则 ID 和官方源站边界。当前已验证官方 `sorani` 规则的匿名免费剧集；它不需要账号、Cookie 或 DRM 绕过，但媒体服务器要求标准 `Origin`/`Referer`，插件通过 Stremio `behaviorHints.proxyHeaders` 交给宿主。没有实现该提示的宿主仍可能无法播放。
 
 ## Bangumi 原生目录
 
@@ -161,7 +164,7 @@ pnpm run build:static
 
 ## 下一阶段边界
 
-下一阶段将增加规则健康检查、失败来源降权、搜索别名回退和可控的持久缓存。当前媒体探测不会执行第三方 JavaScript；需要 WebView、验证码、JS Hook、Cookie 验证或 HLS 广告过滤的规则仍只返回外部播放页，尚未达到 Kazumi 客户端的完整原生解析能力。
+后续将继续扩充经审阅的规则适配器、搜索别名回退和可控的持久缓存。当前媒体探测不会执行第三方 JavaScript；需要 WebView、验证码、JS Hook、登录 Cookie、付费权限或 HLS 广告过滤的规则仍只返回外部播放页，且不会尝试绕过访问控制，尚未达到 Kazumi 客户端的完整原生解析能力。
 
 插件只用于用户拥有或获授权访问的来源。规则文件是可执行网络配置，只应从可信位置加载；服务不会从客户端请求任意规则地址。
 

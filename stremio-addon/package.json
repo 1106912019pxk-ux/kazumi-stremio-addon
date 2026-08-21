@@ -1,6 +1,6 @@
 {
   "name": "kazumi-stremio-addon",
-  "version": "0.4.0-dev.3",
+  "version": "0.4.0-dev.4",
   "private": true,
   "description": "Stremio-compatible bridge for Kazumi-style media sources",
   "type": "module",
@@ -11,7 +11,7 @@
   "scripts": {
     "start": "node src/server.mjs",
     "dev": "node --watch src/server.mjs",
-    "check": "node --check src/model.mjs && node --check src/demo-source.mjs && node --check src/rule-error.mjs && node --check src/rule-runtime-state.mjs && node --check src/kazumi-api-rule.mjs && node --check src/kazumi-rule-bridge.mjs && node --check src/rule-registry.mjs && node --check src/bangumi-bridge.mjs && node --check src/addon.mjs && node --check src/server.mjs && node --check scripts/build-static.mjs",
+    "check": "node --check src/model.mjs && node --check src/demo-source.mjs && node --check src/rule-error.mjs && node --check src/rule-runtime-state.mjs && node --check src/kazumi-api-rule.mjs && node --check src/kazumi-rule-adapters.mjs && node --check src/kazumi-rule-bridge.mjs && node --check src/rule-registry.mjs && node --check src/bangumi-bridge.mjs && node --check src/addon.mjs && node --check src/server.mjs && node --check scripts/build-static.mjs",
     "test": "node --test",
     "build:static": "node scripts/build-static.mjs",
     "verify": "pnpm run check && pnpm test && pnpm run build:static"

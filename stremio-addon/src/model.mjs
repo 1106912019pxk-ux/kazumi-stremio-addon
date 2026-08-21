@@ -1,4 +1,4 @@
-export const ADDON_VERSION = '0.4.0-dev.3';
+export const ADDON_VERSION = '0.4.0-dev.4';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',

@@ -16,6 +16,8 @@ export const API_CHAPTER_FORMATS = Object.freeze({
   DELIMITED: 'delimited',
 });
 
+const ALLOWED_MEDIA_HEADER_NAMES = new Set(['origin', 'referer', 'user-agent']);
+
 function ruleError(message, cause) {
   return new KazumiRuleError(message, { code: 'INVALID_RULE', cause });
 }
@@ -80,6 +82,9 @@ export function normalizeApiChapterConfig(value) {
   const variables = Object.fromEntries(
     Object.entries(stringMap(input.variables)).map(([key, item]) => [key, String(item)]),
   );
+  const episodeVariables = Object.fromEntries(
+    Object.entries(stringMap(input.episodeVariables)).map(([key, item]) => [key, String(item)]),
+  );
   return {
     request: normalizeApiRequestConfig(input.request),
     format: normalizedChapterFormat(input.format),
@@ -94,10 +99,23 @@ export function normalizeApiChapterConfig(value) {
     episodeSeparator: String(input.episodeSeparator ?? '#'),
     fieldSeparator: String(input.fieldSeparator ?? '$'),
     variables,
+    episodeVariables,
     episodePage:
       input.episodePage && typeof input.episodePage === 'object'
         ? { url: String(page.url ?? ''), query: stringMap(page.query) }
         : undefined,
+  };
+}
+
+export function normalizeApiPlayConfig(value) {
+  const input = objectValue(value);
+  return {
+    request: normalizeApiRequestConfig(input.request),
+    urlPath: String(input.urlPath ?? '$.data.playUrl'),
+    canPlayPath: String(input.canPlayPath ?? ''),
+    mediaHeaders: Object.fromEntries(
+      Object.entries(stringMap(input.mediaHeaders)).map(([key, item]) => [key, String(item)]),
+    ),
   };
 }
 
@@ -294,6 +312,7 @@ export function validateApiSearchConfig(config) {
 export function validateApiChapterConfig(config) {
   validateApiRequestConfig(config.request);
   for (const path of Object.values(config.variables)) parseRestrictedJsonPath(path);
+  for (const path of Object.values(config.episodeVariables)) parseRestrictedJsonPath(path);
   if (config.format === API_CHAPTER_FORMATS.DELIMITED) {
     parseRestrictedJsonPath(config.roadNamesPath);
     parseRestrictedJsonPath(config.roadEpisodesPath);
@@ -310,6 +329,17 @@ export function validateApiChapterConfig(config) {
   else if (!config.episodePage) throw ruleError('必须配置播放入口地址路径或播放页地址模板');
   if (config.episodePage && !config.episodePage.url.trim()) {
     throw ruleError('播放页地址模板不能为空');
+  }
+}
+
+export function validateApiPlayConfig(config) {
+  validateApiRequestConfig(config.request);
+  parseRestrictedJsonPath(config.urlPath);
+  if (config.canPlayPath.trim()) parseRestrictedJsonPath(config.canPlayPath);
+  for (const name of Object.keys(config.mediaHeaders)) {
+    if (!ALLOWED_MEDIA_HEADER_NAMES.has(name.toLowerCase())) {
+      throw ruleError(`播放媒体请求头不受支持: ${name}`);
+    }
   }
 }
 
@@ -441,7 +471,21 @@ function parseNestedChapters(document, config, rootVariables, baseUrl) {
         episodeIndex,
         baseUrl,
       );
-      if (url) episodes.push({ name: name || `第${episodeIndex + 1}集`, url });
+      const variables = {};
+      for (const [variableName, path] of Object.entries(config.episodeVariables)) {
+        const value = readFirst(episodeNode, path);
+        if (value === undefined || value === null) {
+          throw upstreamError(`剧集变量 ${variableName} 未匹配到值: ${path}`);
+        }
+        variables[variableName] = value;
+      }
+      if (url) {
+        episodes.push({
+          name: name || `第${episodeIndex + 1}集`,
+          url,
+          ...(Object.keys(variables).length > 0 ? { variables } : {}),
+        });
+      }
     }
     if (episodes.length > 0) {
       roads.push({ name: configuredName || `播放线路${roads.length + 1}`, episodes });
@@ -498,4 +542,27 @@ export function parseApiChapters(raw, config, { source, baseUrl }) {
   return config.format === API_CHAPTER_FORMATS.DELIMITED
     ? parseDelimitedChapters(document, config, variables, baseUrl)
     : parseNestedChapters(document, config, variables, baseUrl);
+}
+
+export function parseApiPlay(raw, config) {
+  validateApiPlayConfig(config);
+  const document = decodeResponse(raw);
+  if (config.canPlayPath.trim() && readFirst(document, config.canPlayPath) !== true) {
+    return { mediaUrls: [], mediaHeaders: config.mediaHeaders };
+  }
+  const url = stringValue(readFirst(document, config.urlPath));
+  if (!url) return { mediaUrls: [], mediaHeaders: config.mediaHeaders };
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch (error) {
+    throw upstreamError(`播放 API 返回了无效媒体 URL: ${url}`, error);
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw upstreamError('播放 API 返回的媒体 URL 仅支持 HTTP(S)');
+  }
+  if (!/\.(?:m3u8|mp4|m4v|webm)$/i.test(parsed.pathname)) {
+    throw upstreamError('播放 API 未返回受支持的媒体直链');
+  }
+  return { mediaUrls: [parsed.toString()], mediaHeaders: config.mediaHeaders };
 }
