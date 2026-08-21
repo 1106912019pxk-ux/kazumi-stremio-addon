@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.3` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录和可供 KDTIVI 真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.4` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录和可供 KDTIVI 真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
 
 ## 当前验证范围
 
@@ -47,7 +47,7 @@ $env:KAZUMI_DEMO_MODE = "true"
 node src/server.mjs
 ```
 
-安装该 Node 服务的 manifest 后，优先从 KDTIVI 的电视节目分类选择“Kazumi 动态规则验收”，再打开“Kazumi 动态规则播放演示”。其详情包含 2 集、每集 2 条线路；线路由规则先访问本地播放页，再探测并返回 Apple 官方 HLS 测试流。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换和播放页媒体探测。
+安装该 Node 服务的 manifest 后，优先从 KDTIVI 的电视节目分类选择“Kazumi 动态规则验收”，再打开“Kazumi 动态规则播放演示”。其详情包含 2 集、每集 3 条线路：第一条是无额外请求头的 HTTPS MP4，后两条是 HLS 兼容流和 HEVC HLS。线路由规则先访问本地播放页，再探测并返回媒体地址。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换和播放页媒体探测。
 
 不同宿主对 Stremio 搜索目录的支持并不一致。KDTIVI 的全局搜索可能只显示宿主自己的 TMDB 结果；这些结果不是 Kazumi 规则返回的，也不会自动使用仅声明 `kazumi-` ID 的桥接流。因此动态验收应从上述专用目录进入，避免把宿主元数据结果误认为 Kazumi 内容。
 

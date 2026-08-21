@@ -1,6 +1,6 @@
 {
   "name": "kazumi-stremio-addon",
-  "version": "0.3.0-dev.3",
+  "version": "0.3.0-dev.4",
   "private": true,
   "description": "Stremio-compatible bridge for Kazumi-style media sources",
   "type": "module",

@@ -386,6 +386,15 @@ function directMediaUrl(value) {
   }
 }
 
+function webReadyMediaUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.pathname.toLowerCase().endsWith('.mp4');
+  } catch {
+    return false;
+  }
+}
+
 function mediaUrlsFromHtml(html, pageUrl) {
   const values = [];
   const add = (value) => {
@@ -524,7 +533,9 @@ export class KazumiStremioRuleBridge {
           ];
         }
         const proxyRequestHeaders = {
-          ...(rule.userAgent ? { 'User-Agent': rule.userAgent } : {}),
+          ...(rule.userAgent && rule.userAgent !== DEFAULT_USER_AGENT
+            ? { 'User-Agent': rule.userAgent }
+            : {}),
           ...(rule.referer ? { Referer: rule.referer } : {}),
         };
         return mediaUrls.map((mediaUrl, mediaIndex) => ({
@@ -533,7 +544,7 @@ export class KazumiStremioRuleBridge {
           url: mediaUrl,
           behaviorHints: {
             bingeGroup: `kazumi-rule-${rule.id}-${entry.road}`,
-            notWebReady: true,
+            notWebReady: !webReadyMediaUrl(mediaUrl),
             ...(Object.keys(proxyRequestHeaders).length > 0
               ? { proxyHeaders: { request: proxyRequestHeaders } }
               : {}),

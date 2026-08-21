@@ -12,7 +12,12 @@ import {
   normalizeKazumiRule,
 } from '../src/kazumi-rule-bridge.mjs';
 import { createDemoRuleDocument, DEMO_RULE_ID } from '../src/demo-source.mjs';
-import { APPLE_COMPAT_HLS_URL, APPLE_HLS_URL, IDS } from '../src/model.mjs';
+import {
+  APPLE_COMPAT_HLS_URL,
+  APPLE_HLS_URL,
+  IDS,
+  MDN_MP4_URL,
+} from '../src/model.mjs';
 
 async function listen(server) {
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -151,20 +156,23 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
     (response) => response.json(),
   );
   assert.equal(meta.meta.videos.length, 2);
-  assert.equal(meta.meta.videos[0].title, '第 1 集 · HEVC 多码率');
+  assert.equal(meta.meta.videos[0].title, '第 1 集 · HTTPS MP4');
 
   const firstEpisode = await fetch(
     `${addonUrl}/stream/series/${meta.meta.videos[0].id}.json`,
   ).then((response) => response.json());
-  assert.equal(firstEpisode.streams.length, 2);
+  assert.equal(firstEpisode.streams.length, 3);
   assert.deepEqual(
     firstEpisode.streams.map((stream) => stream.url),
-    [APPLE_HLS_URL, APPLE_COMPAT_HLS_URL],
+    [MDN_MP4_URL, APPLE_COMPAT_HLS_URL, APPLE_HLS_URL],
   );
   assert.deepEqual(
     firstEpisode.streams.map((stream) => stream.name),
-    ['播放线路1', '播放线路2'],
+    ['播放线路1', '播放线路2', '播放线路3'],
   );
+  assert.equal(firstEpisode.streams[0].behaviorHints.notWebReady, false);
+  assert.equal(firstEpisode.streams[0].behaviorHints.proxyHeaders, undefined);
+  assert.equal(firstEpisode.streams[1].behaviorHints.notWebReady, true);
 });
 
 test('supports legacy POST search rules', async (context) => {

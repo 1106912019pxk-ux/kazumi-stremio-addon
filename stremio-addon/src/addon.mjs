@@ -40,7 +40,7 @@ function commonHeaders(contentType) {
     'access-control-allow-origin': '*',
     'access-control-allow-methods': 'GET, OPTIONS',
     'access-control-allow-headers': 'Content-Type',
-    'cache-control': 'public, max-age=300',
+    'cache-control': 'no-store',
     'content-type': contentType,
   };
 }

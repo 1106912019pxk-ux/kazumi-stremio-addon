@@ -1,4 +1,4 @@
-export const ADDON_VERSION = '0.3.0-dev.3';
+export const ADDON_VERSION = '0.3.0-dev.4';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',
@@ -12,6 +12,8 @@ export const APPLE_HLS_URL =
 
 export const APPLE_COMPAT_HLS_URL =
   'https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/bipbop_4x3_variant.m3u8';
+
+export const MDN_MP4_URL = 'https://mdn.github.io/shared-assets/videos/flower.mp4';
 
 export function createManifest(
   origin,
