@@ -33,7 +33,7 @@ const rules = [...(demoRule ? [demoRule] : []), ...configuredRules];
 const featuredKeyword =
   process.env.KAZUMI_FEATURED_SEARCH ?? (demoEnabled ? 'Kazumi' : '');
 const streamPolicy =
-  process.env.KAZUMI_STREAM_POLICY ?? STREAM_POLICIES.KDTIVI_HLS;
+  process.env.KAZUMI_STREAM_POLICY ?? STREAM_POLICIES.ALL;
 const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine(rules), {
   featuredKeyword,
   streamPolicy,

@@ -1,4 +1,4 @@
-export const ADDON_VERSION = '0.3.0-dev.5';
+export const ADDON_VERSION = '0.3.0-dev.6';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',
@@ -111,7 +111,7 @@ export function createStreams() {
   return {
     streams: [
       {
-        name: 'KDTIVI 兼容 HLS',
+        name: '兼容 HLS',
         title: 'Apple 官方 AVC/HLS 公网测试流',
         description: 'HTTPS · HLS · AVC · 测试内容',
         url: APPLE_COMPAT_HLS_URL,

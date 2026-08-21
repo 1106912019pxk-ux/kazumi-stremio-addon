@@ -13,7 +13,7 @@ const DEFAULT_USER_AGENT = 'Kazumi-Stremio-Bridge/0.2';
 
 export const STREAM_POLICIES = Object.freeze({
   ALL: 'all',
-  KDTIVI_HLS: 'kdtivi-hls',
+  HLS_ONLY: 'hls-only',
 });
 
 export class KazumiRuleError extends Error {
@@ -423,7 +423,7 @@ function likelyUnsupportedHlsCodec(value) {
   }
 }
 
-export function isKdtiviCompatibleMedia(value) {
+export function isCompatibleHlsMedia(value) {
   try {
     const url = new URL(value);
     return (
@@ -437,7 +437,7 @@ export function isKdtiviCompatibleMedia(value) {
 }
 
 function streamRank(stream) {
-  if (isKdtiviCompatibleMedia(stream.url)) return 0;
+  if (isCompatibleHlsMedia(stream.url)) return 0;
   if (mediaKind(stream.url) === 'hls') return 1;
   if (mediaKind(stream.url) === 'mp4') return 2;
   if (mediaKind(stream.url) === 'webm') return 3;
@@ -609,14 +609,14 @@ export class KazumiStremioRuleBridge {
       }),
     );
     const streams = groups.flat().sort((left, right) => streamRank(left) - streamRank(right));
-    if (this.streamPolicy !== STREAM_POLICIES.KDTIVI_HLS) return { streams };
+    if (this.streamPolicy !== STREAM_POLICIES.HLS_ONLY) return { streams };
 
     return {
       streams: streams
-        .filter((stream) => isKdtiviCompatibleMedia(stream.url))
+        .filter((stream) => isCompatibleHlsMedia(stream.url))
         .map((stream) => ({
           ...stream,
-          description: `${stream.description} · KDTIVI 兼容 HLS`,
+          description: `${stream.description} · 兼容 HLS`,
         })),
     };
   }

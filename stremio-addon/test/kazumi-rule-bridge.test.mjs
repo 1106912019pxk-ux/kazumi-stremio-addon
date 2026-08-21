@@ -9,7 +9,7 @@ import {
   KazumiRuleEngine,
   KazumiStremioRuleBridge,
   STREAM_POLICIES,
-  isKdtiviCompatibleMedia,
+  isCompatibleHlsMedia,
   loadKazumiRules,
   normalizeKazumiRule,
 } from '../src/kazumi-rule-bridge.mjs';
@@ -136,7 +136,7 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
   });
   const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine([demoRule]), {
     featuredKeyword: 'Kazumi',
-    streamPolicy: STREAM_POLICIES.KDTIVI_HLS,
+    streamPolicy: STREAM_POLICIES.HLS_ONLY,
   });
   requestHandler = createRequestHandler({ ruleBridge });
 
@@ -175,10 +175,10 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
   );
   assert.equal(firstEpisode.streams[0].behaviorHints.notWebReady, true);
   assert.equal(firstEpisode.streams[0].behaviorHints.proxyHeaders, undefined);
-  assert.match(firstEpisode.streams[0].description, /KDTIVI 兼容 HLS/);
-  assert.equal(isKdtiviCompatibleMedia(MDN_MP4_URL), false);
-  assert.equal(isKdtiviCompatibleMedia(APPLE_HLS_URL), false);
-  assert.equal(isKdtiviCompatibleMedia(APPLE_COMPAT_HLS_URL), true);
+  assert.match(firstEpisode.streams[0].description, /兼容 HLS/);
+  assert.equal(isCompatibleHlsMedia(MDN_MP4_URL), false);
+  assert.equal(isCompatibleHlsMedia(APPLE_HLS_URL), false);
+  assert.equal(isCompatibleHlsMedia(APPLE_COMPAT_HLS_URL), true);
 });
 
 test('supports legacy POST search rules', async (context) => {

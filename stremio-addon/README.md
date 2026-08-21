@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.5` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录、KDTIVI HLS 兼容输出策略和可供真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.6` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录、宿主可选的媒体输出策略和可供真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
 
 ## 当前验证范围
 
@@ -14,7 +14,7 @@
 - HLS/MP4 等直链与 User-Agent/Referer 播放请求头输出；
 - `<video>`、`<source>` 和常见内联播放器配置中的 HLS/MP4 媒体探测；
 - WebView/JS Hook 播放页的显式降级，不把未解析页面伪装成视频直链。
-- 默认只向 KDTIVI 输出已验证的 HTTPS 普通 HLS，并过滤 MP4、WebM 及 URL 可识别的 HEVC/H.265/AV1 流。
+- 默认保持网络和宿主中立，输出规则解析到的全部媒体候选；需要时可显式启用普通 HTTPS HLS 筛选。
 
 ## 本地运行
 
@@ -48,12 +48,12 @@ $env:KAZUMI_DEMO_MODE = "true"
 node src/server.mjs
 ```
 
-安装该 Node 服务的 manifest 后，优先从 KDTIVI 的电视节目分类选择“Kazumi 动态规则验收”，再打开“Kazumi 动态规则播放演示”。详情仍由规则解析出 2 集和三类媒体候选，但服务默认使用 `kdtivi-hls` 策略，只向宿主返回真机已验证的 HTTPS 普通 HLS；失败的 MP4 与 HEVC 样例不再出现在播放线路中。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换、播放页媒体探测和宿主兼容筛选。
+安装该 Node 服务的 manifest 后，优先从 KDTIVI 的电视节目分类选择“Kazumi 动态规则验收”，再打开“Kazumi 动态规则播放演示”。详情由规则解析出 2 集和三类媒体候选，服务默认使用通用的 `all` 策略，不根据 VPN、IP、域名或特定宿主改写结果。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换和播放页媒体探测。
 
-如需在完整 Stremio 客户端中保留所有原始媒体候选，可显式切换策略：
+若某个宿主只适合普通 HTTPS HLS，可由部署者显式启用可选策略：
 
 ```powershell
-$env:KAZUMI_STREAM_POLICY = "all"
+$env:KAZUMI_STREAM_POLICY = "hls-only"
 node src/server.mjs
 ```
 
@@ -111,7 +111,7 @@ pnpm run build:static
 1. 将静态包部署到 HTTPS 站点，或者在局域网启动 Node 服务。
 2. 在 KDTIVI 的 Addons 页面粘贴完整的 `manifest.json` 地址。
 3. 固定 Pages 版打开“Kazumi 网络源验证”；动态服务版选择“Kazumi 动态规则验收”目录。支持 Stremio 搜索目录的宿主也可由“Kazumi 规则搜索”返回结果。
-4. 进入“第 1 集 · HLS 兼容流”，选择唯一的“KDTIVI 兼容 HLS”线路。
+4. 进入“第 1 集 · HLS 兼容流”，选择“兼容 HLS”线路。
 5. 记录目录、封面、播放、拖动、音轨、字幕和进度恢复结果。
 
 ## 下一阶段边界
