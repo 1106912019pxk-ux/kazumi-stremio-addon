@@ -59,6 +59,17 @@ test('supports health checks and CORS preflight', async () => {
   assert.equal(preflight.headers.get('access-control-allow-origin'), '*');
 });
 
+test('exposes a safe public runtime status document', async () => {
+  const response = await fetch(`${baseUrl}/status.json`);
+  assert.equal(response.status, 200);
+  const status = await response.json();
+  assert.equal(status.status, 'ok');
+  assert.match(status.version, /^0\./);
+  assert.equal(status.rules.loaded, 0);
+  assert.deepEqual(status.rules.health, []);
+  assert.equal(status.bangumi.enabled, false);
+});
+
 test('returns JSON errors for unknown routes', async () => {
   const response = await fetch(`${baseUrl}/missing.json`);
   assert.equal(response.status, 404);

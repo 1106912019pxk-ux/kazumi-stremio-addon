@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: kazumi-stremio-addon
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./stremio-addon/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: KAZUMI_BANGUMI_MODE
+        value: "true"
+      - key: KAZUMI_RULES_REMOTE
+        value: official
+      - key: KAZUMI_RULES_ALLOWLIST
+        sync: false
+      - key: KAZUMI_STREAM_POLICY
+        value: all
+      - key: KAZUMI_CACHE_TTL_MS
+        value: "60000"
+      - key: KAZUMI_RULE_FAILURE_THRESHOLD
+        value: "2"
+      - key: KAZUMI_RULE_COOLDOWN_MS
+        value: "120000"

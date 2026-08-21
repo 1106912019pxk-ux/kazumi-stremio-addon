@@ -22,7 +22,12 @@ Push-Location $addonRoot
 try {
     & $NodePath --check "src/model.mjs"
     & $NodePath --check "src/demo-source.mjs"
+    & $NodePath --check "src/rule-error.mjs"
+    & $NodePath --check "src/rule-runtime-state.mjs"
+    & $NodePath --check "src/kazumi-api-rule.mjs"
     & $NodePath --check "src/kazumi-rule-bridge.mjs"
+    & $NodePath --check "src/rule-registry.mjs"
+    & $NodePath --check "src/bangumi-bridge.mjs"
     & $NodePath --check "src/addon.mjs"
     & $NodePath --check "src/server.mjs"
     & $NodePath --check "scripts/build-static.mjs"

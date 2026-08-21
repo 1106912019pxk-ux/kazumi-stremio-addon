@@ -1,4 +1,5 @@
 import {
+  ADDON_VERSION,
   IDS,
   createCatalog,
   createManifest,
@@ -63,7 +64,14 @@ function getOrigin(request) {
   return `${protocol}://${host}`;
 }
 
-async function handleRequestCore(request, response, ruleBridge, bangumiBridge, onRequest) {
+async function handleRequestCore(
+  request,
+  response,
+  ruleBridge,
+  bangumiBridge,
+  ruleLoadReport,
+  onRequest,
+) {
   if (request.method === 'OPTIONS') {
     response.writeHead(204, commonHeaders('text/plain; charset=utf-8'));
     response.end();
@@ -94,7 +102,7 @@ async function handleRequestCore(request, response, ruleBridge, bangumiBridge, o
     sendText(
       response,
       200,
-      `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Kazumi Bridge Test</title><body><h1>Kazumi Bridge Test</h1><p>将以下地址粘贴到支持 Stremio 插件的客户端：</p><code>${origin}/manifest.json</code></body></html>`,
+      `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Kazumi Bridge</title><body><h1>Kazumi Bridge</h1><p>将以下地址粘贴到支持 Stremio 插件的客户端：</p><code>${origin}/manifest.json</code><p><a href="${origin}/status.json">运行状态</a></p></body></html>`,
       'text/html; charset=utf-8',
     );
     return;
@@ -107,6 +115,22 @@ async function handleRequestCore(request, response, ruleBridge, bangumiBridge, o
         enabled: ruleBridge?.enabled ?? false,
         rules: ruleBridge?.engine.size ?? 0,
         streamPolicy: ruleBridge?.streamPolicy ?? 'static',
+      },
+      bangumi: {
+        enabled: bangumiBridge?.enabled ?? false,
+      },
+    });
+    return;
+  }
+
+  if (pathname === '/status.json') {
+    sendJson(response, 200, {
+      status: 'ok',
+      version: ADDON_VERSION,
+      rules: {
+        loaded: ruleBridge?.engine.size ?? 0,
+        load: ruleLoadReport ?? { local: 0, remote: { enabled: false, loaded: 0 } },
+        health: ruleBridge?.engine.status?.() ?? [],
       },
       bangumi: {
         enabled: bangumiBridge?.enabled ?? false,
@@ -230,9 +254,21 @@ function errorStatus(error) {
   return 400;
 }
 
-export function createRequestHandler({ ruleBridge, bangumiBridge, onRequest } = {}) {
+export function createRequestHandler({
+  ruleBridge,
+  bangumiBridge,
+  ruleLoadReport,
+  onRequest,
+} = {}) {
   return (request, response) => {
-    handleRequestCore(request, response, ruleBridge, bangumiBridge, onRequest).catch((error) => {
+    handleRequestCore(
+      request,
+      response,
+      ruleBridge,
+      bangumiBridge,
+      ruleLoadReport,
+      onRequest,
+    ).catch((error) => {
       if (response.headersSent) {
         response.destroy(error);
         return;

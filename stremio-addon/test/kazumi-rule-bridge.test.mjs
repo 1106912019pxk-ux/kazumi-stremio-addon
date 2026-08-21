@@ -424,3 +424,53 @@ test('loads trusted Kazumi JSON rules from a configured directory', async () => 
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('caches successful searches and temporarily skips repeatedly failing sources', async () => {
+  let timestamp = Date.parse('2026-08-21T00:00:00.000Z');
+  let badRequests = 0;
+  let goodRequests = 0;
+  const makeRule = (name, host) => normalizeKazumiRule(
+    {
+      name,
+      baseURL: `https://${host}/`,
+      searchURL: `https://${host}/search?q=@keyword`,
+      searchList: '//article',
+      searchName: './/span',
+      searchResult: './/a',
+      chapterRoads: '//div',
+      chapterResult: './/a',
+    },
+    { id: name },
+  );
+  const engine = new KazumiRuleEngine(
+    [makeRule('Bad', 'bad.example'), makeRule('Good', 'good.example')],
+    {
+      now: () => timestamp,
+      cacheTtlMs: 60_000,
+      cooldownMs: 5_000,
+      failureThreshold: 2,
+      fetchImpl: async (input) => {
+        timestamp += 10;
+        const url = new URL(input);
+        if (url.hostname === 'bad.example') {
+          badRequests += 1;
+          throw new Error('offline');
+        }
+        goodRequests += 1;
+        return new Response(
+          '<html><body><article><span>Good Result</span><a href="/show/1">详情</a></article></body></html>',
+          { headers: { 'content-type': 'text/html' } },
+        );
+      },
+    },
+  );
+
+  assert.equal((await engine.searchAll('测试')).length, 1);
+  assert.equal((await engine.searchAll('测试')).length, 1);
+  assert.equal((await engine.searchAll('测试')).length, 1);
+  assert.equal(badRequests, 2);
+  assert.equal(goodRequests, 1);
+  const badStatus = engine.status().find((rule) => rule.name === 'Bad');
+  assert.equal(badStatus.status, 'cooldown');
+  assert.equal(badStatus.lastErrorCode, 'UPSTREAM_REQUEST_FAILED');
+});

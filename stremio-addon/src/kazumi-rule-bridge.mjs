@@ -14,6 +14,7 @@ import {
   validateApiSearchConfig,
 } from './kazumi-api-rule.mjs';
 import { KazumiRuleError } from './rule-error.mjs';
+import { ExpiringPromiseCache, RuleHealthRegistry } from './rule-runtime-state.mjs';
 
 const { evaluateXPathToNodes } = fontoxpath;
 
@@ -21,6 +22,7 @@ const ITEM_ID_PREFIX = 'kazumi-rule-item-';
 const VIDEO_ID_PREFIX = 'kazumi-rule-video-';
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024;
+const DEFAULT_CACHE_TTL_MS = 60_000;
 const DEFAULT_USER_AGENT = 'Kazumi-Stremio-Bridge/0.2';
 
 export const STREAM_POLICIES = Object.freeze({
@@ -266,6 +268,11 @@ export class KazumiRuleEngine {
       fetchImpl = globalThis.fetch,
       timeoutMs = DEFAULT_TIMEOUT_MS,
       maxBodyBytes = DEFAULT_MAX_BODY_BYTES,
+      cacheTtlMs = DEFAULT_CACHE_TTL_MS,
+      cacheMaxEntries = 256,
+      failureThreshold = 2,
+      cooldownMs = 2 * 60_000,
+      now = Date.now,
     } = {},
   ) {
     if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function');
@@ -273,6 +280,16 @@ export class KazumiRuleEngine {
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
     this.maxBodyBytes = maxBodyBytes;
+    this.cache = new ExpiringPromiseCache({
+      ttlMs: cacheTtlMs,
+      maxEntries: cacheMaxEntries,
+      now,
+    });
+    this.health = new RuleHealthRegistry([...this.rules.keys()], {
+      failureThreshold,
+      cooldownMs,
+      now,
+    });
   }
 
   get size() {
@@ -280,9 +297,16 @@ export class KazumiRuleEngine {
   }
 
   async search(ruleId, keyword) {
-    const rule = this.#getRule(ruleId);
     const trimmedKeyword = keyword.trim();
     if (!trimmedKeyword) return [];
+    return this.cache.get(
+      `search:${ruleId}:${trimmedKeyword}`,
+      () => this.health.observe(ruleId, 'search', () => this.#search(ruleId, trimmedKeyword)),
+    );
+  }
+
+  async #search(ruleId, trimmedKeyword) {
+    const rule = this.#getRule(ruleId);
 
     if (rule.searchMode === RULE_MODES.API) {
       const prepared = prepareApiRequest(rule.searchApiConfig.request, {
@@ -329,8 +353,11 @@ export class KazumiRuleEngine {
   }
 
   async searchAll(keyword) {
+    const rankedRuleIds = this.health.rank([...this.rules.keys()]);
+    const activeRuleIds = rankedRuleIds.filter((ruleId) => !this.health.isCoolingDown(ruleId));
+    const selectedRuleIds = activeRuleIds.length > 0 ? activeRuleIds : rankedRuleIds.slice(0, 1);
     const settled = await Promise.allSettled(
-      [...this.rules.keys()].map((ruleId) => this.search(ruleId, keyword)),
+      selectedRuleIds.map((ruleId) => this.search(ruleId, keyword)),
     );
     const successful = settled.filter((result) => result.status === 'fulfilled');
     if (settled.length > 0 && successful.length === 0) {
@@ -340,6 +367,13 @@ export class KazumiRuleEngine {
   }
 
   async chapters(ruleId, source) {
+    return this.cache.get(
+      `chapters:${ruleId}:${source}`,
+      () => this.health.observe(ruleId, 'chapters', () => this.#chapters(ruleId, source)),
+    );
+  }
+
+  async #chapters(ruleId, source) {
     const rule = this.#getRule(ruleId);
     if (rule.chapterMode === RULE_MODES.API) {
       const prepared = prepareApiRequest(rule.chapterApiConfig.request, { source });
@@ -375,6 +409,14 @@ export class KazumiRuleEngine {
   }
 
   async resolveEpisode(ruleId, source) {
+    return this.health.observe(
+      ruleId,
+      'resolveEpisode',
+      () => this.#resolveEpisode(ruleId, source),
+    );
+  }
+
+  async #resolveEpisode(ruleId, source) {
     const rule = this.#getRule(ruleId);
     const sourceUrl = resolveHttpUrl(rule.baseUrl, source, '播放页链接');
     if (directMediaUrl(sourceUrl)) return [sourceUrl];
@@ -388,6 +430,10 @@ export class KazumiRuleEngine {
       headers: requestHeaders(rule),
     });
     return mediaUrlsFromHtml(html, sourceUrl);
+  }
+
+  status() {
+    return this.health.snapshot([...this.rules.values()]);
   }
 
   #getRule(ruleId) {

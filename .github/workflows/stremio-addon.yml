@@ -6,10 +6,12 @@ on:
     paths:
       - "stremio-addon/**"
       - ".github/workflows/stremio-addon.yml"
+      - "render.yaml"
   pull_request:
     paths:
       - "stremio-addon/**"
       - ".github/workflows/stremio-addon.yml"
+      - "render.yaml"
 
 permissions:
   contents: read
@@ -41,3 +43,18 @@ jobs:
           name: kazumi-stremio-addon
           path: stremio-addon/release/*
           if-no-files-found: error
+
+  verify-docker-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: stremio-addon/Dockerfile
+          push: false
+          tags: kazumi-stremio-addon:ci

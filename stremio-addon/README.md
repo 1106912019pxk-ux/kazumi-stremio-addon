@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.4.0-dev.2` 已同时兼容 Kazumi 旧式 XPath 规则和 API level 8 的 JSON API 规则，并将 Bangumi 周播目录、动画元数据、搜索、选集、多来源线路和播放页构造统一转换成 Stremio 资源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.4.0-dev.3` 已同时兼容 Kazumi 旧式 XPath 规则和 API level 8 的 JSON API 规则，并将 Bangumi 周播目录、动画元数据、搜索、选集、多来源线路和播放页构造统一转换成 Stremio 资源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的规则。
 
 ## 当前验证范围
 
@@ -19,6 +19,8 @@
 - `<video>`、`<source>` 和常见内联播放器配置中的 HLS/MP4 媒体探测；
 - WebView/JS Hook 播放页的显式降级，不把未解析页面伪装成视频直链。
 - 默认保持网络和宿主中立，输出规则解析到的全部媒体候选；需要时可显式启用普通 HTTPS HLS 筛选。
+- 可选的 HTTPS 规则仓库装载、显式规则白名单、失败来源冷却和短时请求缓存；
+- `/status.json` 提供不暴露来源地址或请求内容的规则运行状态。
 
 ## 本地运行
 
@@ -44,6 +46,23 @@ node src/server.mjs
 ```
 
 规则目录在启动时读取，修改规则后需要重启服务。XPath 模式兼容 `baseURL`、`searchURL`、`searchList`、`searchName`、`searchResult`、`chapterRoads`、`chapterResult`、`usePost`、`userAgent` 和 `referer`；XPath 采用 Kazumi 常见的元素、层级、序号、属性条件和 `text()` 子集。
+
+## 受控远程规则仓库
+
+服务器也可以在启动时从 Kazumi 官方规则仓库读取明确选中的规则。远程模式默认关闭，并且即使打开也不会自动下载全部规则；必须同时提供白名单：
+
+```powershell
+$env:KAZUMI_RULES_REMOTE = "official"
+$env:KAZUMI_RULES_ALLOWLIST = "RuleA,RuleB"
+$env:KAZUMI_BANGUMI_MODE = "true"
+node src/server.mjs
+```
+
+白名单名称必须存在于仓库 `index.json` 中。索引和规则文件均强制使用 HTTPS，并分别限制响应大小和规则总数；下载后的 JSON 仍需通过本项目的 Kazumi 规则结构、URL 和 XPath/JSONPath 校验。未显式列出的规则不会产生任何网络请求。本地 `KAZUMI_RULES_DIR` 中的同名规则优先于远程规则，便于部署者锁定或修复特定版本。
+
+自建规则仓库可改用 `KAZUMI_RULES_INDEX_URL` 与 `KAZUMI_RULES_BASE_URL`，但仍需设置 `KAZUMI_RULES_ALLOWLIST`。公共服务只应装载部署者有权使用且审阅过的规则。
+
+规则搜索和选集结果默认缓存 60 秒，连续失败两次的来源冷却 120 秒，避免一个失效站点拖慢全部来源。可通过 `KAZUMI_CACHE_TTL_MS`、`KAZUMI_RULE_FAILURE_THRESHOLD` 和 `KAZUMI_RULE_COOLDOWN_MS` 调整。`/status.json` 只展示规则名称、成功/失败次数、延迟和冷却状态，不公开来源 URL、搜索词、播放链接或请求头。
 
 API 模式兼容 Kazumi API level 8 的 `searchMode`、`chapterMode`、`searchApiConfig` 和 `chapterApiConfig`。支持 GET/POST、JSON/表单请求体、请求头、查询参数、`@keyword`、`@source`、响应变量、线路/剧集序号和播放页模板。JSONPath 与 Kazumi 一样只接受字段、数组下标、通配符和带引号字段名，不执行过滤器、递归查找或表达式。
 
@@ -108,6 +127,12 @@ docker compose -f .\stremio-addon\compose.yaml up -d --build
 ```
 
 这条命令需要在仓库根目录执行。Compose 会把 `stremio-addon/rules/` 只读挂载到容器；服务监听 `7000` 端口，后续迁移到 NAS 时可继续使用同一个镜像和插件地址。
+
+## Render 公网 HTTPS 预览
+
+仓库根目录的 `render.yaml` 是可复现的 Docker Blueprint，默认使用新加坡区域、`/healthz` 健康检查、Bangumi 原生目录和官方远程规则模式。创建 Blueprint 时 Render 会要求填写 `KAZUMI_RULES_ALLOWLIST`，不填写则服务只启动网络测试内容，不会下载规则。
+
+Render 免费 Web Service 适合开发验收，但闲置后会休眠，第一次访问可能需要约一分钟唤醒；这可能超过视频宿主的请求超时，因此不应作为最终长期地址。正式使用应升级为不休眠实例，或把同一 Docker 镜像部署到 NAS/VPS/其他长期 Node 托管。插件本身不根据托管商、用户 IP、VPN 或 DNS 改写规则结果。
 
 ## GitHub Pages HTTPS
 
