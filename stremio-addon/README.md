@@ -39,7 +39,7 @@ node src/server.mjs
 http://127.0.0.1:7000/manifest.json
 ```
 
-默认不加载任何动态规则。将一个只包含可信 Kazumi JSON 文件的目录通过环境变量传入后，manifest 会自动增加“Kazumi 规则搜索”目录：
+默认不加载任何动态规则。将一个只包含可信 Kazumi JSON 文件的目录通过环境变量传入后，manifest 的首个目录会同时支持普通浏览和 Kazumi 规则搜索：
 
 ```powershell
 $env:KAZUMI_RULES_DIR = "C:\path\to\authorized-rules"
@@ -99,9 +99,7 @@ $env:KAZUMI_STREAM_POLICY = "hls-only"
 node src/server.mjs
 ```
 
-不同宿主对 Stremio 搜索目录的支持并不一致。KDTIVI 的全局搜索可能只显示宿主自己的 TMDB 结果；这些结果不是 Kazumi 规则返回的，也不会自动使用仅声明 `kazumi-` ID 的桥接流。因此动态验收应从上述专用目录进入，避免把宿主元数据结果误认为 Kazumi 内容。
-
-KDTIVI 163 当前只实际请求 manifest 中的首个普通目录，因此动态模式会复用首个 `kazumi-network-test` 目录 ID 并将它显示为“Kazumi 动态规则验收”。搜索专用目录仍保留给完整实现 Stremio 搜索协议的宿主。
+不同宿主对 Stremio 搜索目录的支持并不一致。为兼容 KDTIVI，桥接器从 `0.4.0-dev.5` 起直接在首个普通目录声明搜索能力，同时接受标准路径参数和查询参数两种请求格式。旧版 manifest 中的 `kazumi-rule-search` 地址仍会返回兼容结果，但不再作为单独的空目录展示。宿主自己的 TMDB 搜索结果不属于 Kazumi 规则内容，也不会自动使用仅声明 `kazumi-` ID 的桥接流。
 
 iPhone 不能访问电脑的 `127.0.0.1`。局域网测试应使用电脑的局域网地址，例如 `http://192.168.1.20:7000/manifest.json`，并允许 Windows 防火墙的对应入站访问。公网使用应部署静态包到 HTTPS 站点，或为 Node 服务配置 HTTPS 反向代理。
 

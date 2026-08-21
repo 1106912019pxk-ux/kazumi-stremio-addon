@@ -101,13 +101,15 @@ test('bridges a Kazumi XPath rule from search to direct HLS streams', async (con
   context.after(() => close(addon));
 
   const manifest = await fetch(`${addonUrl}/manifest.json`).then((response) => response.json());
-  assert.equal(manifest.catalogs.at(-1).id, IDS.ruleCatalog);
-  assert.deepEqual(manifest.catalogs.at(-1).extra, [
-    { name: 'search', isRequired: true },
+  assert.equal(manifest.catalogs.length, 1);
+  assert.equal(manifest.catalogs[0].id, IDS.catalog);
+  assert.deepEqual(manifest.catalogs[0].extra, [
+    { name: 'search', isRequired: false },
   ]);
+  assert.deepEqual(manifest.catalogs[0].extraSupported, ['search']);
 
   const catalog = await fetch(
-    `${addonUrl}/catalog/series/${IDS.ruleCatalog}/search=Apple%20HLS.json`,
+    `${addonUrl}/catalog/series/${IDS.catalog}/search=Apple%20HLS.json`,
   ).then((response) => response.json());
   assert.equal(catalog.metas.length, 1);
   assert.equal(catalog.metas[0].name, 'Apple HLS Demo');
@@ -158,7 +160,7 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
   assert.equal(featuredCatalog.metas[0].name, 'Kazumi 动态规则播放演示');
 
   const catalog = await fetch(
-    `${addonUrl}/catalog/series/${IDS.ruleCatalog}/search=Kazumi.json`,
+    `${addonUrl}/catalog/series/${IDS.catalog}/search=Kazumi.json`,
   ).then((response) => response.json());
   assert.equal(catalog.metas.length, 1);
   assert.equal(catalog.metas[0].name, 'Kazumi 动态规则播放演示');
@@ -187,6 +189,64 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
   assert.equal(isCompatibleHlsMedia(MDN_MP4_URL), false);
   assert.equal(isCompatibleHlsMedia(APPLE_HLS_URL), false);
   assert.equal(isCompatibleHlsMedia(APPLE_COMPAT_HLS_URL), true);
+});
+
+test('keeps search catalogs valid across preload and repeated KDTIVI request forms', async (context) => {
+  const requests = [];
+  const upstream = createServer((request, response) => {
+    const url = new URL(request.url, 'http://fixture.test');
+    requests.push(url.searchParams.get('q'));
+    response.setHeader('content-type', 'text/html; charset=utf-8');
+    response.end(
+      `<!doctype html><html><body><article><span>${url.searchParams.get('q')}</span><a href="/shows/result">详情</a></article></body></html>`,
+    );
+  });
+  const upstreamUrl = await listen(upstream);
+  context.after(() => close(upstream));
+
+  const rule = normalizeKazumiRule(
+    {
+      name: 'Search Compatibility Fixture',
+      baseURL: `${upstreamUrl}/`,
+      searchURL: `${upstreamUrl}/search?q=@keyword`,
+      searchList: '//article',
+      searchName: './/span',
+      searchResult: './/a',
+      chapterRoads: '//div',
+      chapterResult: './/a',
+    },
+    { id: 'search-compatibility' },
+  );
+  const engine = new KazumiRuleEngine([rule]);
+  const ruleBridge = new KazumiStremioRuleBridge(engine);
+  const addon = createServer(createRequestHandler({ ruleBridge }));
+  const addonUrl = await listen(addon);
+  context.after(() => close(addon));
+
+  const preload = await fetch(
+    `${addonUrl}/catalog/series/${IDS.ruleCatalog}.json`,
+  ).then((response) => response.json());
+  assert.deepEqual(preload, { metas: [] });
+
+  const primaryPathSearch = await fetch(
+    `${addonUrl}/catalog/series/${IDS.catalog}/search=${encodeURIComponent('海贼王')}.json`,
+  ).then((response) => response.json());
+  assert.ok(
+    primaryPathSearch.metas[0],
+    JSON.stringify({ primaryPathSearch, requests, health: engine.status() }),
+  );
+  assert.equal(primaryPathSearch.metas[0].name, '海贼王');
+
+  const primaryQuerySearch = await fetch(
+    `${addonUrl}/catalog/series/${IDS.catalog}.json?search=${encodeURIComponent('葬送的芙莉莲')}`,
+  ).then((response) => response.json());
+  assert.equal(primaryQuerySearch.metas[0].name, '葬送的芙莉莲');
+
+  const legacyQuerySearch = await fetch(
+    `${addonUrl}/catalog/series/${IDS.ruleCatalog}.json?search=${encodeURIComponent('迷宫饭')}`,
+  ).then((response) => response.json());
+  assert.equal(legacyQuerySearch.metas[0].name, '迷宫饭');
+  assert.deepEqual(requests, ['海贼王', '葬送的芙莉莲', '迷宫饭']);
 });
 
 test('supports legacy POST search rules', async (context) => {

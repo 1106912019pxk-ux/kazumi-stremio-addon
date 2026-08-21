@@ -1,4 +1,4 @@
-export const ADDON_VERSION = '0.4.0-dev.4';
+export const ADDON_VERSION = '0.4.0-dev.5';
 
 export const IDS = Object.freeze({
   catalog: 'kazumi-network-test',
@@ -39,17 +39,13 @@ export function createManifest(
         name:
           primaryCatalogName ||
           (enableRuleLibrary ? 'Kazumi 动态规则验收' : 'Kazumi 网络源验证'),
+        ...(enableRuleBridge
+          ? {
+              extra: [{ name: 'search', isRequired: false }],
+              extraSupported: ['search'],
+            }
+          : {}),
       },
-      ...(enableRuleBridge
-        ? [
-            {
-              type: 'series',
-              id: IDS.ruleCatalog,
-              name: 'Kazumi 规则搜索',
-              extra: [{ name: 'search', isRequired: true }],
-            },
-          ]
-        : []),
     ],
     idPrefixes: ['kazumi-'],
     behaviorHints: {

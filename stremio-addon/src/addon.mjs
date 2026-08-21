@@ -64,6 +64,30 @@ function getOrigin(request) {
   return `${protocol}://${host}`;
 }
 
+function catalogRequest(url, pathname, catalogId) {
+  const base = `/catalog/series/${catalogId}`;
+  if (pathname === `${base}.json` || pathname === `${base}/`) {
+    return {
+      matched: true,
+      hasSearch: url.searchParams.has('search'),
+      keyword: url.searchParams.get('search') ?? '',
+    };
+  }
+
+  const prefix = `${base}/`;
+  if (!pathname.startsWith(prefix) || !pathname.endsWith('.json')) {
+    return { matched: false, hasSearch: false, keyword: '' };
+  }
+
+  const extra = pathname.slice(prefix.length, -'.json'.length);
+  const parameters = new URLSearchParams(extra);
+  return {
+    matched: true,
+    hasSearch: parameters.has('search'),
+    keyword: parameters.get('search') ?? '',
+  };
+}
+
 async function handleRequestCore(
   request,
   response,
@@ -176,7 +200,18 @@ async function handleRequestCore(
     }
   }
 
-  if (pathname === `/catalog/series/${IDS.catalog}.json`) {
+  const primaryCatalogRequest = catalogRequest(url, pathname, IDS.catalog);
+  if (primaryCatalogRequest.matched) {
+    if (primaryCatalogRequest.hasSearch) {
+      sendJson(
+        response,
+        200,
+        ruleBridge?.enabled && primaryCatalogRequest.keyword.trim()
+          ? await ruleBridge.createCatalog(origin, primaryCatalogRequest.keyword)
+          : { metas: [] },
+      );
+      return;
+    }
     sendJson(
       response,
       200,
@@ -206,11 +241,18 @@ async function handleRequestCore(
   }
 
   if (ruleBridge?.enabled) {
-    const searchPrefix = `/catalog/series/${IDS.ruleCatalog}/`;
-    if (pathname.startsWith(searchPrefix) && pathname.endsWith('.json')) {
-      const extra = pathname.slice(searchPrefix.length, -'.json'.length);
-      const keyword = new URLSearchParams(extra).get('search') ?? '';
-      sendJson(response, 200, await ruleBridge.createCatalog(origin, keyword));
+    // Backward compatibility for manifests imported before 0.4.0-dev.5.
+    // Some Stremio-compatible hosts request catalog extras as query parameters
+    // and also preload a search-only catalog without any extras.
+    const legacySearchRequest = catalogRequest(url, pathname, IDS.ruleCatalog);
+    if (legacySearchRequest.matched) {
+      sendJson(
+        response,
+        200,
+        legacySearchRequest.hasSearch && legacySearchRequest.keyword.trim()
+          ? await ruleBridge.createCatalog(origin, legacySearchRequest.keyword)
+          : { metas: [] },
+      );
       return;
     }
 
