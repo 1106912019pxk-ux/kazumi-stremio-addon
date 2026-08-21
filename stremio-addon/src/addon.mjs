@@ -62,7 +62,7 @@ function getOrigin(request) {
   return `${protocol}://${host}`;
 }
 
-async function handleRequestCore(request, response, ruleBridge) {
+async function handleRequestCore(request, response, ruleBridge, onRequest) {
   if (request.method === 'OPTIONS') {
     response.writeHead(204, commonHeaders('text/plain; charset=utf-8'));
     response.end();
@@ -83,6 +83,11 @@ async function handleRequestCore(request, response, ruleBridge) {
     sendJson(response, 400, { error: 'Invalid URL encoding' });
     return;
   }
+  onRequest?.({
+    method: request.method,
+    pathname,
+    userAgent: request.headers['user-agent'] ?? '',
+  });
 
   if (pathname === '/') {
     sendText(
@@ -109,7 +114,10 @@ async function handleRequestCore(request, response, ruleBridge) {
     sendJson(
       response,
       200,
-      createManifest(origin, { enableRuleBridge: ruleBridge?.enabled ?? false }),
+      createManifest(origin, {
+        enableRuleBridge: ruleBridge?.enabled ?? false,
+        enableRuleLibrary: ruleBridge?.featuredEnabled ?? false,
+      }),
     );
     return;
   }
@@ -154,6 +162,11 @@ async function handleRequestCore(request, response, ruleBridge) {
   }
 
   if (ruleBridge?.enabled) {
+    if (pathname === `/catalog/series/${IDS.ruleLibrary}.json`) {
+      sendJson(response, 200, await ruleBridge.createFeaturedCatalog(origin));
+      return;
+    }
+
     const searchPrefix = `/catalog/series/${IDS.ruleCatalog}/`;
     if (pathname.startsWith(searchPrefix) && pathname.endsWith('.json')) {
       const extra = pathname.slice(searchPrefix.length, -'.json'.length);
@@ -202,9 +215,9 @@ function errorStatus(error) {
   return 400;
 }
 
-export function createRequestHandler({ ruleBridge } = {}) {
+export function createRequestHandler({ ruleBridge, onRequest } = {}) {
   return (request, response) => {
-    handleRequestCore(request, response, ruleBridge).catch((error) => {
+    handleRequestCore(request, response, ruleBridge, onRequest).catch((error) => {
       if (response.headersSent) {
         response.destroy(error);
         return;

@@ -1,6 +1,6 @@
 # Kazumi Stremio Add-on Bridge
 
-这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测和可供 KDTIVI 真机验收的动态授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
+这是 Kazumi 本地 fork 中隔离维护的 Stremio 兼容插件。`0.3.0-dev.2` 在 Kazumi JSON/XPath 规则桥接器之外，加入了播放页媒体探测、可浏览的动态规则目录和可供 KDTIVI 真机验收的授权演示源。插件不内置第三方影视内容，只加载服务运行者明确配置且有权使用的本地规则。
 
 ## 当前验证范围
 
@@ -47,7 +47,9 @@ $env:KAZUMI_DEMO_MODE = "true"
 node src/server.mjs
 ```
 
-安装该 Node 服务的 manifest 后，在 KDTIVI 全局搜索输入 `Kazumi`。预期能看到“Kazumi 动态规则播放演示”，其详情包含 2 集、每集 2 条线路；线路由规则先访问本地播放页，再探测并返回 Apple 官方 HLS 测试流。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换和播放页媒体探测。
+安装该 Node 服务的 manifest 后，优先从 KDTIVI 的电视节目分类选择“Kazumi 动态规则验收”，再打开“Kazumi 动态规则播放演示”。其详情包含 2 集、每集 2 条线路；线路由规则先访问本地播放页，再探测并返回 Apple 官方 HLS 测试流。这条链路会实际经过搜索 XPath、详情 XPath、多线路转换和播放页媒体探测。
+
+不同宿主对 Stremio 搜索目录的支持并不一致。KDTIVI 的全局搜索可能只显示宿主自己的 TMDB 结果；这些结果不是 Kazumi 规则返回的，也不会自动使用仅声明 `kazumi-` ID 的桥接流。因此动态验收应从上述专用目录进入，避免把宿主元数据结果误认为 Kazumi 内容。
 
 iPhone 不能访问电脑的 `127.0.0.1`。局域网测试应使用电脑的局域网地址，例如 `http://192.168.1.20:7000/manifest.json`，并允许 Windows 防火墙的对应入站访问。公网使用应部署静态包到 HTTPS 站点，或为 Node 服务配置 HTTPS 反向代理。
 
@@ -98,7 +100,7 @@ pnpm run build:static
 
 1. 将静态包部署到 HTTPS 站点，或者在局域网启动 Node 服务。
 2. 在 KDTIVI 的 Addons 页面粘贴完整的 `manifest.json` 地址。
-3. 固定 Pages 版打开“Kazumi 网络源验证”；动态服务版可在全局搜索中输入动画名，由“Kazumi 规则搜索”返回结果。
+3. 固定 Pages 版打开“Kazumi 网络源验证”；动态服务版选择“Kazumi 动态规则验收”目录。支持 Stremio 搜索目录的宿主也可由“Kazumi 规则搜索”返回结果。
 4. 进入“第 1 集 · Bip Bop HLS”，选择“Apple HLS”。
 5. 记录目录、封面、播放、拖动、音轨、字幕和进度恢复结果。
 

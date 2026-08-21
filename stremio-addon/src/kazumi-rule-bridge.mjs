@@ -422,12 +422,22 @@ function mediaUrlsFromHtml(html, pageUrl) {
 }
 
 export class KazumiStremioRuleBridge {
-  constructor(engine) {
+  constructor(engine, { featuredKeyword = '' } = {}) {
     this.engine = engine;
+    this.featuredKeyword = featuredKeyword.trim();
   }
 
   get enabled() {
     return this.engine.size > 0;
+  }
+
+  get featuredEnabled() {
+    return this.enabled && this.featuredKeyword !== '';
+  }
+
+  async createFeaturedCatalog(origin) {
+    if (!this.featuredEnabled) return { metas: [] };
+    return this.createCatalog(origin, this.featuredKeyword);
   }
 
   async createCatalog(origin, keyword) {

@@ -127,8 +127,21 @@ test('serves the authorized demo through dynamic search, episodes and lines', as
   const demoRule = normalizeKazumiRule(createDemoRuleDocument(addonUrl), {
     id: DEMO_RULE_ID,
   });
-  const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine([demoRule]));
+  const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine([demoRule]), {
+    featuredKeyword: 'Kazumi',
+  });
   requestHandler = createRequestHandler({ ruleBridge });
+
+  const manifest = await fetch(`${addonUrl}/manifest.json`).then((response) => response.json());
+  assert.equal(
+    manifest.catalogs.find((catalogItem) => catalogItem.id === IDS.ruleLibrary)?.name,
+    'Kazumi 动态规则验收',
+  );
+
+  const featuredCatalog = await fetch(
+    `${addonUrl}/catalog/series/${IDS.ruleLibrary}.json`,
+  ).then((response) => response.json());
+  assert.equal(featuredCatalog.metas[0].name, 'Kazumi 动态规则播放演示');
 
   const catalog = await fetch(
     `${addonUrl}/catalog/series/${IDS.ruleCatalog}/search=Kazumi.json`,

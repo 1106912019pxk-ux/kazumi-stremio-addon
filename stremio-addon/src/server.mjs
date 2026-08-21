@@ -29,14 +29,30 @@ const demoRule = demoEnabled
     })
   : undefined;
 const rules = [...(demoRule ? [demoRule] : []), ...configuredRules];
-const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine(rules));
-const server = createServer(createRequestHandler({ ruleBridge }));
+const featuredKeyword =
+  process.env.KAZUMI_FEATURED_SEARCH ?? (demoEnabled ? 'Kazumi' : '');
+const ruleBridge = new KazumiStremioRuleBridge(new KazumiRuleEngine(rules), {
+  featuredKeyword,
+});
+const server = createServer(
+  createRequestHandler({
+    ruleBridge,
+    onRequest: ({ method, pathname, userAgent }) => {
+      const client =
+        String(userAgent).replace(/\s+/g, ' ').trim().slice(0, 120) || 'unknown-client';
+      console.log(`${new Date().toISOString()} ${method} ${pathname} (${client})`);
+    },
+  }),
+);
 
 server.listen(port, host, () => {
   const publicUrl = process.env.PUBLIC_URL ?? `http://127.0.0.1:${port}`;
   console.log(`Kazumi Bridge: ${publicUrl}/manifest.json`);
   console.log(`Kazumi rules loaded: ${rules.length}`);
   if (demoEnabled) console.log('Authorized dynamic demo: enabled (search keyword: Kazumi)');
+  if (ruleBridge.featuredEnabled) {
+    console.log(`Featured rule catalog: enabled (keyword: ${featuredKeyword})`);
+  }
 });
 
 function shutdown(signal) {
